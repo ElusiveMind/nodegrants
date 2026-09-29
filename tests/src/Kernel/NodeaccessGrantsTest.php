@@ -6,6 +6,7 @@ namespace Drupal\Tests\nodeaccess\Kernel;
 
 use Drupal\Core\Database\Database;
 use Drupal\Core\Session\AccountInterface;
+use Drupal\Core\Session\AnonymousUserSession;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\node\Entity\Node;
 use Drupal\node\Entity\NodeType;
@@ -16,11 +17,13 @@ use Drupal\Tests\user\Traits\UserCreationTrait;
 use Drupal\user\Entity\Role;
 use Drupal\user\RoleInterface;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
  * Tests nodeaccess grant records and grant logic.
  */
 #[Group('nodeaccess')]
+#[RunTestsInSeparateProcesses]
 class NodeaccessGrantsTest extends KernelTestBase {
 
   use NodeCreationTrait {
@@ -230,6 +233,72 @@ class NodeaccessGrantsTest extends KernelTestBase {
       }
     }
     $this->assertTrue($found, 'Author grant was applied.');
+  }
+
+  /**
+   * Tests that the author grant goes to the node's current owner.
+   */
+  public function testAuthorGrantFollowsOwner(): void {
+    $old_owner = $this->drupalCreateUser(['access content']);
+    $new_owner = $this->drupalCreateUser(['access content']);
+    $node = $this->drupalCreateNode([
+      'type' => 'page',
+      'status' => 1,
+      'uid' => $old_owner->id(),
+    ]);
+    $nid = $node->id();
+
+    // Enable nodeaccess with the author row the node form stores, which holds
+    // the owner at the time the grants were saved.
+    $this->database->insert('nodeaccess_nodes_enabled')
+      ->fields(['nid' => $nid])
+      ->execute();
+    $this->database->insert('nodeaccess')
+      ->fields([
+        'nid' => $nid,
+        'gid' => $old_owner->id(),
+        'realm' => 'nodeaccess_author',
+        'grant_view' => 1,
+        'grant_update' => 1,
+        'grant_delete' => 1,
+      ])
+      ->execute();
+
+    $node->setOwnerId($new_owner->id());
+    $author_gids = [];
+    foreach (nodeaccess_node_access_records($node) as $grant) {
+      if ($grant['realm'] == 'nodeaccess_author') {
+        $author_gids[] = $grant['gid'];
+      }
+    }
+    $this->assertEquals([$new_owner->id()], $author_gids, 'Only the current owner gets the author grant.');
+  }
+
+  /**
+   * Tests that nodes owned by the anonymous user get no author grant.
+   */
+  public function testNoAuthorGrantForAnonymousOwner(): void {
+    $node = $this->drupalCreateNode([
+      'type' => 'page',
+      'status' => 1,
+      'uid' => 0,
+    ]);
+    $this->database->insert('nodeaccess_nodes_enabled')
+      ->fields(['nid' => $node->id()])
+      ->execute();
+
+    foreach (nodeaccess_node_access_records($node) as $grant) {
+      $this->assertNotEquals('nodeaccess_author', $grant['realm'], 'Anonymous-owned node has no author grant.');
+    }
+  }
+
+  /**
+   * Tests that anonymous visitors are not placed in the author realm.
+   */
+  public function testAnonymousHasNoAuthorRealm(): void {
+    $grants = nodeaccess_node_grants(new AnonymousUserSession(), 'view');
+    $this->assertArrayNotHasKey('nodeaccess_author', $grants);
+    $this->assertArrayHasKey('nodeaccess_rid', $grants);
   }
 
   /**

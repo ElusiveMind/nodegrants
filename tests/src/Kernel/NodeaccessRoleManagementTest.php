@@ -11,11 +11,13 @@ use Drupal\Tests\node\Traits\NodeCreationTrait;
 use Drupal\Tests\user\Traits\UserCreationTrait;
 use Drupal\user\Entity\Role;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
  * Tests nodeaccess role map management when roles are added/removed.
  */
 #[Group('nodeaccess')]
+#[RunTestsInSeparateProcesses]
 class NodeaccessRoleManagementTest extends KernelTestBase {
 
   use NodeCreationTrait {

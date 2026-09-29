@@ -31,9 +31,22 @@ class UserAutocompleteController extends ControllerBase {
       ->fields('ufd', ['uid', 'name'])
       ->condition('name', "%" . $input . "%", 'LIKE')
       ->orderBy('name', 'ASC')
-      ->range(0, 10)
-      ->execute();
-    $ids = $query->fetchAll();
+      ->range(0, 10);
+
+    // Leave out users already granted on the node being edited. Only when the
+    // current user can edit that node, so the results can't be used to find
+    // out who has grants on nodes they can't edit.
+    $nid = $request->query->getInt('nid');
+    $node = $nid ? $this->entityTypeManager()->getStorage('node')->load($nid) : NULL;
+    if ($node && $node->access('update')) {
+      $granted = $db->select('nodeaccess', 'n')
+        ->fields('n', ['gid'])
+        ->condition('n.nid', $nid)
+        ->condition('n.realm', 'nodeaccess_uid');
+      $query->condition('ufd.uid', $granted, 'NOT IN');
+    }
+
+    $ids = $query->execute()->fetchAll();
 
     foreach ($ids as $user) {
       $results[] = [

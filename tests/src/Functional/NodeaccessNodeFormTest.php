@@ -8,11 +8,13 @@ use Drupal\node\Entity\NodeType;
 use Drupal\Tests\BrowserTestBase;
 use Drupal\user\Entity\Role;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
  * Tests nodeaccess integration on node add/edit forms.
  */
 #[Group('nodeaccess')]
+#[RunTestsInSeparateProcesses]
 class NodeaccessNodeFormTest extends BrowserTestBase {
 
   /**

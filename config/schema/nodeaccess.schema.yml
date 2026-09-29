@@ -1,0 +1,29 @@
+# Schema for the configuration files of the Nodeaccess module.
+
+nodeaccess.settings:
+  type: config_object
+  label: 'Nodeaccess settings'
+  mapping:
+    role_map:
+      type: sequence
+      label: 'Grant IDs, keyed by role ID'
+      sequence:
+        type: integer
+        label: 'Grant ID'
+    allowed_types:
+      type: sequence
+      label: 'Enabled content types, from Nodeaccess 1.x'
+      # Deleting a content type saves NULL here when the key was never set.
+      nullable: true
+      sequence:
+        type: integer
+        label: 'Enabled'
+
+# Keys are nodeaccess_grant_tab_{bundle} and
+# nodeaccess_{bundle}_{role or "author"}_{view|update|delete}.
+node.type.*.third_party.nodeaccess:
+  type: sequence
+  label: 'Nodeaccess settings for this content type'
+  sequence:
+    type: integer
+    label: 'Grant tab or default grant (0 or 1)'

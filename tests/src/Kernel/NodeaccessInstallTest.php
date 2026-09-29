@@ -10,11 +10,13 @@ use Drupal\Tests\node\Traits\ContentTypeCreationTrait;
 use Drupal\Tests\user\Traits\UserCreationTrait;
 use Drupal\user\Entity\Role;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
  * Tests nodeaccess installation and schema setup.
  */
 #[Group('nodeaccess')]
+#[RunTestsInSeparateProcesses]
 class NodeaccessInstallTest extends KernelTestBase {
 
   use UserCreationTrait {

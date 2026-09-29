@@ -17,7 +17,6 @@ use Drupal\node\NodeInterface;
 use Drupal\node\Entity\NodeType;
 use Drupal\node\Entity\Node;
 use Drupal\Core\Cache\Cache;
-use Drupal\Core\Link;
 use Drupal\Core\Url;
 
 /**
@@ -155,7 +154,8 @@ function nodeaccess_node_access_records(NodeInterface $node) {
       }
     }
     else {
-      // Node has own grants, use them.
+      // Node has own grants, use them. The stored author row is skipped; it
+      // holds whoever owned the node when its grants were last saved.
       $entries = $db->select('nodeaccess', 'n')
         ->fields('n')
         ->condition('nid', $nid, '=')
@@ -164,6 +164,9 @@ function nodeaccess_node_access_records(NodeInterface $node) {
 
       $grants = [];
       foreach ($entries as $row) {
+        if ($row->realm == 'nodeaccess_author') {
+          continue;
+        }
         $grants[] = [
           'gid' => $row->gid,
           'realm' => $row->realm,
@@ -173,14 +176,22 @@ function nodeaccess_node_access_records(NodeInterface $node) {
         ];
       }
     }
-    // Apply author grants.
-    if (!empty($default['author'])) {
-      $grant = $default['author'];
-      $grant['gid'] = $node->getOwnerId();
-      $grant['realm'] = 'nodeaccess_author';
-      // Include author grant even with all values FALSE, it may be
-      // needed to overwrite an older value.
-      $grants[] = $grant;
+
+    /**
+     * Author grants come from the content type defaults and go to the node's
+     * current owner, so they follow the node when its owner changes. Nodes
+     * owned by the anonymous user get none: every anonymous visitor is uid 0.
+     */
+    $owner_id = (int) $node->getOwnerId();
+    if ($owner_id > 0) {
+      $type = NodeType::load($bundle);
+      $grants[] = [
+        'gid' => $owner_id,
+        'realm' => 'nodeaccess_author',
+        'grant_view' => (int) $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $bundle . '_author_view', FALSE),
+        'grant_update' => (int) $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $bundle . '_author_update', FALSE),
+        'grant_delete' => (int) $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $bundle . '_author_delete', FALSE),
+      ];
     }
   }
   $updated_grants = [];
@@ -202,14 +213,19 @@ function nodeaccess_node_grants(AccountInterface $account, $op) {
 
   $rids = [];
   foreach ($roles as $role) {
-    $rids[] = $role_map[$role];
+    if (isset($role_map[$role])) {
+      $rids[] = $role_map[$role];
+    }
   }
 
   $access = [
     'nodeaccess_rid' => $rids,
     'nodeaccess_uid' => [$account->id()],
-    'nodeaccess_author' => [$account->id()],
   ];
+  // Anonymous visitors all share uid 0, so none of them is an author.
+  if ($account->isAuthenticated()) {
+    $access['nodeaccess_author'] = [$account->id()];
+  }
 
   return $access;
 }
@@ -235,7 +251,9 @@ function nodeaccess_entity_update(EntityInterface $entity) {
 function nodeaccess_entity_insert(EntityInterface $entity) {
   $config = \Drupal::configFactory()->getEditable('nodeaccess.settings');
   if ($entity instanceof RoleInterface) {
-    $roles_gids = array_flip($config->get('role_map'));
+    // The role map doesn't exist yet if roles are created before
+    // nodeaccess_install() runs.
+    $roles_gids = array_flip($config->get('role_map') ?? []);
     $roles_gids[] = $entity->id();
     $config->set('role_map', array_flip($roles_gids));
     $config->save();
@@ -249,7 +267,7 @@ function nodeaccess_entity_delete(EntityInterface $entity) {
   $config = \Drupal::configFactory()->getEditable('nodeaccess.settings');
 
   if ($entity instanceof RoleInterface) {
-    $roles_gids = $config->get('role_map');
+    $roles_gids = $config->get('role_map') ?? [];
     unset($roles_gids[$entity->id()]);
     $config->set('role_map', $roles_gids);
     $config->save();
@@ -304,8 +322,8 @@ function nodeaccess_node_access(NodeInterface $node, $op, $account) {
         // We check if the role has particular access to this node.
         $anonymous_rid = $role_map[RoleInterface::ANONYMOUS_ID];
         // If anonymous has rights to this node, we allow them.
-        if ((isset($grants['rid'][$anonymous_rid]['grant_update']) && $op == 'update') ||
-          (isset($grants['rid'][$anonymous_rid]['grant_delete']) && $op == 'delete')) {
+        if ((!empty($grants['rid'][$anonymous_rid]['grant_update']) && $op == 'update') ||
+          (!empty($grants['rid'][$anonymous_rid]['grant_delete']) && $op == 'delete')) {
           $access = AccessResult::allowed();
         }
         else {
@@ -322,6 +340,9 @@ function nodeaccess_node_access(NodeInterface $node, $op, $account) {
         else if (!empty($grants['rid'])) {
           $access = AccessResult::forbidden();
           foreach ($account->getRoles() as $rid) {
+            if (!isset($role_map[$rid])) {
+              continue;
+            }
             $rid = $role_map[$rid];
             if ((!empty($grants['rid'][$rid]['grant_update']) && $op == 'update') ||
                 (!empty($grants['rid'][$rid]['grant_delete']) && $op == 'delete')) {
@@ -332,9 +353,20 @@ function nodeaccess_node_access(NodeInterface $node, $op, $account) {
         else {
           $access = AccessResult::neutral();
         }
+
+        // The node's owner also gets the content type's author grants, when
+        // nodeaccess controls this node (it has role or user grants).
+        if (!empty($grants) && !$access->isAllowed() && $uid == $node->getOwnerId()) {
+          $type = NodeType::load($node->bundle());
+          if ($type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $node->bundle() . '_author_' . $op, FALSE)) {
+            $access = AccessResult::allowed();
+          }
+          $access->addCacheableDependency($type);
+        }
       }
 
-      $access->cachePerUser();
+      // The result depends on the node's grants and owner.
+      $access->cachePerUser()->addCacheableDependency($node);
       break;
 
     default:
@@ -362,7 +394,7 @@ function _nodeaccess_get_grants($node) {
     ->execute()
     ->fetchAll();
   foreach ($result as $grant) {
-    $grants['rid']['anonymous'] = [
+    $grants['rid'][$grant->gid] = [
       'grant_view' => $grant->grant_view,
       'grant_update' => $grant->grant_update,
       'grant_delete' => $grant->grant_delete,
@@ -437,6 +469,14 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
     return;
   }
 
+  /**
+   * Only users who may grant node permissions get the nodeaccess form, and with
+   * it the submit handler that rewrites this node's grants.
+   */
+  if (!\Drupal::currentUser()->hasPermission('grant node permissions')) {
+    return;
+  }
+
   $form['nodeaccess'] = [
     '#type' => 'details',
     '#title' => t('Nodeaccess'),
@@ -496,6 +536,7 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
    * as well.
    */
   $use_defaults = FALSE;
+  $entries = [];
   if (!empty($nid)) {
     $entries = $db->select('nodeaccess', 'n')
       ->fields('n')
@@ -527,11 +568,16 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
    * named anonymous.
    */
   $allowed_roles = nodeaccess_get_allowed_roles();
+  $role_map = \Drupal::config('nodeaccess.settings')->get('role_map');
+
+  if ($use_defaults === FALSE) {
+    $form['nodeaccess_enable']['#default_value'] = TRUE;
+  }
 
   $i = 0;
   $permissions = ['view', 'update', 'delete'];
   foreach ($roles as $key => $role) {
-    if ($allowed_roles[$key] !== TRUE) {
+    if (empty($allowed_roles[$key])) {
       continue;
     }
 
@@ -539,25 +585,17 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
       $form['nodeaccess']['table'][$key][$bundle . '_' . $key] = [
         '#markup' => $role->label(),
       ];
-      if ($type !== NULL && $use_defaults === TRUE) {
+      $default_value = FALSE;
+      if ($use_defaults === TRUE) {
         $default_value = $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $bundle . '_' . $key . '_' . $permission, FALSE);
       }
-      elseif ($use_defaults === FALSE) {
-        $form['nodeaccess_enable']['#default_value'] = TRUE;
-        // Pull grants from our grants table.
-        $config = \Drupal::configFactory()->getEditable('nodeaccess.settings');
-        $roles_gids = $config->get('role_map');
-        $roles_gids = array_flip($roles_gids);
-        foreach ($role_entries as $entry) {
-          $entry = (array) $entry;
-          if ($roles_gids[$entry['gid']] == $key) {
-            $default_value = $entry['grant_' . $permission];
-            break;
-          }
-        }
-      }
       else {
-        $default_value = FALSE;
+        // Pull grants from our grants table. A role with no stored grant row
+        // stays unchecked.
+        $gid = $role_map[$key] ?? NULL;
+        if ($gid !== NULL && isset($role_entries[$gid])) {
+          $default_value = $role_entries[$gid]['grant_' . $permission];
+        }
       }
 
       $form['nodeaccess']['table'][$key][$bundle . '_' . $key . '_' . $permission] = [
@@ -569,17 +607,37 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
   }
   // Display the users we already have grants for.
   foreach ($user_entries as $gid => $entry) {
-    $query = $db->select('users_field_data', 'ufd')
+    $name = $db->select('users_field_data', 'ufd')
       ->fields('ufd', ['name'])
       ->condition('uid', $gid)
-      ->execute();
-    $ids = $query->fetchAssoc();
+      ->execute()
+      ->fetchField();
 
+    /**
+     * Skip grants for users that no longer exist. They are not re-inserted
+     * when the node is saved, so saving cleans them up.
+     */
+    if ($name === FALSE) {
+      continue;
+    }
+
+    /**
+     * The remove route is CSRF protected. Keep the link as a render array so
+     * its token placeholder is replaced at render time; flattening it to a
+     * string would lose the placeholder and every removal would get a 403.
+     */
     $query = ['nid' => $nid, 'uid' => $gid];
-    $link = Link::fromTextAndUrl(t('remove'), Url::fromRoute('nodeaccess.remove.user', $query))->toString();
-
     $form['nodeaccess']['table']['existing_user-'.$gid]['name'] = [
-      '#markup' => $ids['name'] . ' (' . $link . ')',
+      'name' => [
+        '#plain_text' => $name,
+      ],
+      'remove' => [
+        '#type' => 'link',
+        '#title' => t('remove'),
+        '#url' => Url::fromRoute('nodeaccess.remove.user', $query),
+        '#prefix' => ' (',
+        '#suffix' => ')',
+      ],
     ];
     foreach ($permissions as $permission) {
       $form['nodeaccess']['table']['existing_user-'.$gid][$gid . '-' . $permission] = [
@@ -594,6 +652,9 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
     '#size' => 30,
     '#maxlength' => 60,
     '#autocomplete_route_name' => 'nodeaccess.autocomplete.users',
+    // Lets the autocomplete leave out users already listed on this node.
+    '#autocomplete_query_parameters' => !empty($nid) ? ['nid' => $nid] : [],
+    '#element_validate' => ['nodeaccess_new_user_validate'],
     '#default_value' => '',
   ];
   foreach ($permissions as $permission) {
@@ -612,6 +673,28 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
     if ($action != 'preview' && isset($form['actions'][$action]['#type']) && $form['actions'][$action]['#type'] === 'submit') {
       $form['actions'][$action]['#submit'][] = 'nodeaccess_custom_entity_submit';
     }
+  }
+}
+
+/**
+ * Element validation for the new user grant field on node forms.
+ *
+ * The submit handler writes a row for every listed user and then one for the
+ * new user, so adding a user who is already listed would violate the
+ * nodeaccess table's primary key. The autocomplete leaves listed users out,
+ * but the "name [uid]" value can still be typed by hand.
+ *
+ * @see nodeaccess_custom_entity_submit()
+ */
+function nodeaccess_new_user_validate(array &$element, FormStateInterface $form_state) {
+  if (!$form_state->getValue('nodeaccess_enable')) {
+    return;
+  }
+  if (preg_match('/^(.+) \[(\d+)\]$/', (string) $element['#value'], $matches)
+    && $form_state->hasValue(['table', 'existing_user-' . $matches[2]])) {
+    $form_state->setError($element, t('%name already has grants on this node. Change them in their row instead.', [
+      '%name' => $matches[1],
+    ]));
   }
 }
 
@@ -713,16 +796,19 @@ function nodeaccess_custom_entity_submit($form, FormStateInterface $form_state) 
      * Check for new user grants. Make sure the uid we're getting matches the user in the text.
      */
     if (!empty($values['table']['user'][$bundle . '_user'])) {
-      preg_match_all("/\[([^\]]*)\]/", $values['table']['user'][$bundle . '_user'], $matches);
-      $uid = $matches[1][0];
-
-      $username = str_replace(' [' . $uid . ']', '', $values['table']['user'][$bundle . '_user']);
-      $query = $db->select('users_field_data', 'ufd')
-        ->fields('ufd', ['uid', 'name'])
-        ->condition('name', $username)
-        ->condition('uid', $uid)
-        ->execute();
-      $ids = $query->fetchAll();
+      // Expect the "name [uid]" format the autocomplete produces.
+      $ids = [];
+      $uid = NULL;
+      if (preg_match('/^(.+) \[(\d+)\]$/', $values['table']['user'][$bundle . '_user'], $matches)) {
+        $username = $matches[1];
+        $uid = $matches[2];
+        $query = $db->select('users_field_data', 'ufd')
+          ->fields('ufd', ['uid', 'name'])
+          ->condition('name', $username)
+          ->condition('uid', $uid)
+          ->execute();
+        $ids = $query->fetchAll();
+      }
       if (count($ids) == 1) {
         $db->insert('nodeaccess')
           ->fields([
@@ -741,9 +827,12 @@ function nodeaccess_custom_entity_submit($form, FormStateInterface $form_state) 
     }
 
     /**
-     * Handle author grants from the ones defined in our content type definition.
+     * Store the author grant from the content type defaults. Access doesn't
+     * use this row: nodeaccess_node_access_records() builds the author grant
+     * for the node's current owner. It is kept because an engaged node must
+     * have at least one row; the node form reads "no rows" as not engaged.
      */
-    $author_id = $node->getOwner()->id();
+    $author_id = $node->getOwnerId();
     $db->insert('nodeaccess')
       ->fields([
         'nid' => $values['nid'],
@@ -851,8 +940,7 @@ function nodeaccess_node_type_edit_form_builder($entity_type, NodeTypeInterface 
       $type->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $permission, $enabled);
     }
   }
-  $renderCache = \Drupal::service('cache.render');
-  $renderCache->invalidateAll();
+  Cache::invalidateTags(['rendered']);
 }
 
 /**
@@ -860,7 +948,7 @@ function nodeaccess_node_type_edit_form_builder($entity_type, NodeTypeInterface 
  */
 function nodeaccess_get_allowed_roles() {
   $roles = Role::loadMultiple();
-  $all_anonymous_roles = FALSE;
+  $all_non_anonymous_roles = FALSE;
   $authenticated = $roles['authenticated'];
   if ($authenticated->hasPermission('include in nodeaccess grants')) {
     $all_non_anonymous_roles = TRUE;

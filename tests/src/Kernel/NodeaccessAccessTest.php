@@ -7,17 +7,20 @@ namespace Drupal\Tests\nodeaccess\Kernel;
 use Drupal\Core\Access\AccessResult;
 use Drupal\Core\Database\Database;
 use Drupal\KernelTests\KernelTestBase;
+use Drupal\node\Entity\NodeType;
 use Drupal\Tests\node\Traits\ContentTypeCreationTrait;
 use Drupal\Tests\node\Traits\NodeCreationTrait;
 use Drupal\Tests\user\Traits\UserCreationTrait;
 use Drupal\user\Entity\Role;
 use Drupal\user\RoleInterface;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
  * Tests nodeaccess_node_access() hook for update and delete operations.
  */
 #[Group('nodeaccess')]
+#[RunTestsInSeparateProcesses]
 class NodeaccessAccessTest extends KernelTestBase {
 
   use NodeCreationTrait {
@@ -201,6 +204,50 @@ class NodeaccessAccessTest extends KernelTestBase {
 
     $access = nodeaccess_node_access($node, 'view', $user);
     $this->assertNull($access, 'View operation defers to core node access.');
+  }
+
+  /**
+   * Tests that the node's owner gets the content type's author grants.
+   */
+  public function testAuthorAccess(): void {
+    $config = \Drupal::configFactory()->get('nodeaccess.settings');
+    $role_map = $config->get('role_map');
+
+    $author = $this->drupalCreateUser(['access content']);
+    $other = $this->drupalCreateUser(['access content']);
+    $node = $this->drupalCreateNode([
+      'type' => 'page',
+      'status' => 1,
+      'uid' => $author->id(),
+    ]);
+    $nid = $node->id();
+
+    // Enable nodeaccess with a role grant that allows viewing only.
+    $this->database->insert('nodeaccess_nodes_enabled')
+      ->fields(['nid' => $nid])
+      ->execute();
+    $this->database->insert('nodeaccess')
+      ->fields([
+        'nid' => $nid,
+        'gid' => $role_map[RoleInterface::AUTHENTICATED_ID],
+        'realm' => 'nodeaccess_rid',
+        'grant_view' => 1,
+        'grant_update' => 0,
+        'grant_delete' => 0,
+      ])
+      ->execute();
+
+    // nodeaccess_install() sets every author default to 1.
+    $this->assertTrue(nodeaccess_node_access($node, 'update', $author)->isAllowed(), 'Author can update.');
+    $this->assertTrue(nodeaccess_node_access($node, 'delete', $author)->isAllowed(), 'Author can delete.');
+    $this->assertFalse(nodeaccess_node_access($node, 'update', $other)->isAllowed(), 'Non-author cannot update.');
+
+    // Turning an author default off removes that grant.
+    NodeType::load('page')
+      ->setThirdPartySetting('nodeaccess', 'nodeaccess_page_author_update', 0)
+      ->save();
+    $this->assertFalse(nodeaccess_node_access($node, 'update', $author)->isAllowed(), 'Author cannot update once the default is off.');
+    $this->assertTrue(nodeaccess_node_access($node, 'delete', $author)->isAllowed(), 'Author can still delete.');
   }
 
 }

@@ -7,11 +7,13 @@ namespace Drupal\Tests\nodeaccess\Functional;
 use Drupal\Tests\BrowserTestBase;
 use Drupal\user\Entity\Role;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
  * Tests the Nodeaccess admin configuration form.
  */
 #[Group('nodeaccess')]
+#[RunTestsInSeparateProcesses]
 class NodeaccessConfigFormTest extends BrowserTestBase {
 
   /**
@@ -41,6 +43,7 @@ class NodeaccessConfigFormTest extends BrowserTestBase {
     parent::setUp();
     $this->adminUser = $this->drupalCreateUser([
       'administer nodeaccess',
+      'access administration pages',
       'administer content types',
       'administer nodes',
       'access content',
@@ -96,6 +99,7 @@ class NodeaccessConfigFormTest extends BrowserTestBase {
   public function testAdminMenuLink(): void {
     $this->drupalLogin($this->adminUser);
     $this->drupalGet('/admin/structure');
+    $this->assertSession()->statusCodeEquals(200);
     $this->assertSession()->linkExists('Nodeaccess');
   }
 

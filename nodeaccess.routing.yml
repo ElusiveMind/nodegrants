@@ -11,10 +11,11 @@ nodeaccess.autocomplete.users:
     _controller: '\Drupal\nodeaccess\Controller\UserAutocompleteController::handleAutocomplete'
     _format: json
   requirements:
-    _permission: 'administer nodeaccess'
+    _permission: 'grant node permissions'
 nodeaccess.remove.user:
   path: '/admin/structure/nodeaccess/remove/user/{nid}/{uid}'
   defaults:
     _controller: '\Drupal\nodeaccess\Controller\RemoveUser::handleRemoval'
   requirements:
     _permission: 'administer nodeaccess'
+    _csrf_token: 'TRUE'

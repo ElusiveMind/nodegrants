@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Drupal\Tests\nodeaccess\Functional;
+namespace Drupal\Tests\nodegrants\Functional;
 
 use Drupal\Tests\BrowserTestBase;
 use Drupal\user\Entity\Role;
@@ -10,18 +10,18 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
- * Tests the Nodeaccess admin configuration form.
+ * Tests the Nodegrants admin configuration form.
  */
-#[Group('nodeaccess')]
+#[Group('nodegrants')]
 #[RunTestsInSeparateProcesses]
-class NodeaccessConfigFormTest extends BrowserTestBase {
+class NodegrantsConfigFormTest extends BrowserTestBase {
 
   /**
    * {@inheritdoc}
    */
   protected static $modules = [
     'node',
-    'nodeaccess',
+    'nodegrants',
   ];
 
   /**
@@ -42,7 +42,7 @@ class NodeaccessConfigFormTest extends BrowserTestBase {
   protected function setUp(): void {
     parent::setUp();
     $this->adminUser = $this->drupalCreateUser([
-      'administer nodeaccess',
+      'administer nodegrants',
       'access administration pages',
       'administer content types',
       'administer nodes',
@@ -56,14 +56,14 @@ class NodeaccessConfigFormTest extends BrowserTestBase {
    */
   public function testAdminPageAccess(): void {
     // Anonymous should not have access.
-    $this->drupalGet('/admin/structure/nodeaccess');
+    $this->drupalGet('/admin/structure/nodegrants');
     $this->assertSession()->statusCodeEquals(403);
 
     // Admin user should have access.
     $this->drupalLogin($this->adminUser);
-    $this->drupalGet('/admin/structure/nodeaccess');
+    $this->drupalGet('/admin/structure/nodegrants');
     $this->assertSession()->statusCodeEquals(200);
-    $this->assertSession()->pageTextContains('Nodeaccess');
+    $this->assertSession()->pageTextContains('Nodegrants');
   }
 
   /**
@@ -71,7 +71,7 @@ class NodeaccessConfigFormTest extends BrowserTestBase {
    */
   public function testRoleMapRebuild(): void {
     $this->drupalLogin($this->adminUser);
-    $this->drupalGet('/admin/structure/nodeaccess');
+    $this->drupalGet('/admin/structure/nodegrants');
 
     // The role map table should show current roles.
     $this->assertSession()->pageTextContains('Anonymous user');
@@ -89,7 +89,7 @@ class NodeaccessConfigFormTest extends BrowserTestBase {
     $unprivileged = $this->drupalCreateUser(['access content']);
     $this->drupalLogin($unprivileged);
 
-    $this->drupalGet('/admin/structure/nodeaccess');
+    $this->drupalGet('/admin/structure/nodegrants');
     $this->assertSession()->statusCodeEquals(403);
   }
 
@@ -100,7 +100,7 @@ class NodeaccessConfigFormTest extends BrowserTestBase {
     $this->drupalLogin($this->adminUser);
     $this->drupalGet('/admin/structure');
     $this->assertSession()->statusCodeEquals(200);
-    $this->assertSession()->linkExists('Nodeaccess');
+    $this->assertSession()->linkExists('Nodegrants');
   }
 
 }

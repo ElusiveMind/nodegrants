@@ -22,9 +22,9 @@ use Drupal\Core\Url;
 /**
  * Implements hook_help().
  */
-function nodeaccess_help($route_name, RouteMatchInterface $route_match) {
-  $nodeaccess_text = "
-  <h1>Nodeaccess - Node Access Control for Drupal</h1>
+function nodegrants_help($route_name, RouteMatchInterface $route_match) {
+  $nodegrants_text = "
+  <h1>Nodegrants - Node Access Control for Drupal</h1>
 
   <h2>INTRODUCTION</h2>
 
@@ -33,10 +33,10 @@ function nodeaccess_help($route_name, RouteMatchInterface $route_match) {
   and the fixing of bugs. Please see the GitHub Wiki for this project to get a complete
   set of documentation on how to use this module as well as how to update form previous
   versions of Nodeaccess that have been hosted on Drupal.org. This is also the place
-  to learn how to configure Nodeaccess. That information has been removed from this file
+  to learn how to configure Nodegrants. That information has been removed from this file
   as it was tough to understand without the visuals.</p>
 
-  <a href=\"https://github.com/ElusiveMind/nodeaccess/wiki\" target=\"new\">Nodeaccess Wiki</a>
+  <a href=\"https://github.com/ElusiveMind/nodeaccess/wiki\" target=\"new\">Nodegrants Wiki</a>
 
   <p>This module allows you to manage permissions for nodes by role and user. In
   other words, it implements per node access control for users and groups. With
@@ -48,15 +48,15 @@ function nodeaccess_help($route_name, RouteMatchInterface $route_match) {
   <p>For a full description of the module, visit the project page below. That is also the
   place to submit pull requests.</p>
 
-  <a href=\"https://github.com/ElusiveMind/nodeaccess\" target=\"new\">Nodeaccess GitHub repository</a>
+  <a href=\"https://github.com/ElusiveMind/nodeaccess\" target=\"new\">Nodegrants GitHub repository</a>
 
   <p>To submit bug reports, feature suggestions:</p>
 
-  <a href=\"https://github.com/ElusiveMind/nodeaccess/issues\" target=\"new\">Nodeaccess issue queue</a>";
+  <a href=\"https://github.com/ElusiveMind/nodeaccess/issues\" target=\"new\">Nodegrants issue queue</a>";
 
   switch ($route_name) {
-    case 'help.page.nodeaccess':
-      return $nodeaccess_text;
+    case 'help.page.nodegrants':
+      return $nodegrants_text;
       break;
 
   }
@@ -65,10 +65,11 @@ function nodeaccess_help($route_name, RouteMatchInterface $route_match) {
 /**
  * Implements hook_node_access_records().
  */
-function nodeaccess_node_access_records(NodeInterface $node) {
+function nodegrants_node_access_records(NodeInterface $node) {
   $db = \Drupal::database();
-  $settings = \Drupal::configFactory()->get('nodeaccess.settings');
+  $settings = \Drupal::configFactory()->get('nodegrants.settings');
   $bundle = $node->getType();
+  $type = NodeType::load($bundle);
 
   // Need to find out if node has own grants or whether to use defaults.
   $default = $settings->get($bundle);
@@ -81,18 +82,28 @@ function nodeaccess_node_access_records(NodeInterface $node) {
   $grant_defaults = [
     'nid' => $nid,
     'gid' => 0,
-    'realm' => 'nodeaccess_rid',
+    'realm' => 'nodegrants_rid',
     'grant_view' => 0,
     'grant_update' => 0,
     'grant_delete' => 0,
   ];
 
-  $entries = $db->select('nodeaccess_nodes_enabled', 'n')
-    ->fields('n')
-    ->condition('nid', $node->id(), '=')
-    ->execute()
-    ->fetchAll();
-  $enabled = (count($entries) > 0) ? TRUE : FALSE;
+  /**
+   * A node's stored grants only count while nodegrants is turned on for its
+   * content type. Turning the type off leaves the rows in place but ignores
+   * them, so its nodes fall back to Drupal's content permissions; turning it
+   * back on brings them back. Both need a node access rebuild, which
+   * nodegrants_node_type_presave() flags.
+   */
+  $enabled = FALSE;
+  if (nodegrants_type_enabled($type)) {
+    $entries = $db->select('nodegrants_nodes_enabled', 'n')
+      ->fields('n')
+      ->condition('nid', $node->id(), '=')
+      ->execute()
+      ->fetchAll();
+    $enabled = (count($entries) > 0) ? TRUE : FALSE;
+  }
 
   if ($enabled === FALSE) {
     if ($node->isPublished()) {
@@ -111,7 +122,7 @@ function nodeaccess_node_access_records(NodeInterface $node) {
     }
   }
   else {
-    $entries = $db->select('nodeaccess', 'n')
+    $entries = $db->select('nodegrants', 'n')
       ->fields('n')
       ->condition('nid', $nid, '=')
       ->execute()
@@ -156,7 +167,7 @@ function nodeaccess_node_access_records(NodeInterface $node) {
     else {
       // Node has own grants, use them. The stored author row is skipped; it
       // holds whoever owned the node when its grants were last saved.
-      $entries = $db->select('nodeaccess', 'n')
+      $entries = $db->select('nodegrants', 'n')
         ->fields('n')
         ->condition('nid', $nid, '=')
         ->execute()
@@ -164,7 +175,7 @@ function nodeaccess_node_access_records(NodeInterface $node) {
 
       $grants = [];
       foreach ($entries as $row) {
-        if ($row->realm == 'nodeaccess_author') {
+        if ($row->realm == 'nodegrants_author') {
           continue;
         }
         $grants[] = [
@@ -184,13 +195,12 @@ function nodeaccess_node_access_records(NodeInterface $node) {
      */
     $owner_id = (int) $node->getOwnerId();
     if ($owner_id > 0) {
-      $type = NodeType::load($bundle);
       $grants[] = [
         'gid' => $owner_id,
-        'realm' => 'nodeaccess_author',
-        'grant_view' => (int) $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $bundle . '_author_view', FALSE),
-        'grant_update' => (int) $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $bundle . '_author_update', FALSE),
-        'grant_delete' => (int) $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $bundle . '_author_delete', FALSE),
+        'realm' => 'nodegrants_author',
+        'grant_view' => (int) $type->getThirdPartySetting('nodegrants', 'nodegrants_' . $bundle . '_author_view', FALSE),
+        'grant_update' => (int) $type->getThirdPartySetting('nodegrants', 'nodegrants_' . $bundle . '_author_update', FALSE),
+        'grant_delete' => (int) $type->getThirdPartySetting('nodegrants', 'nodegrants_' . $bundle . '_author_delete', FALSE),
       ];
     }
   }
@@ -206,8 +216,8 @@ function nodeaccess_node_access_records(NodeInterface $node) {
 /**
  * Implements hook_node_grants().
  */
-function nodeaccess_node_grants(AccountInterface $account, $op) {
-  $config = \Drupal::configFactory()->get('nodeaccess.settings');
+function nodegrants_node_grants(AccountInterface $account, $op) {
+  $config = \Drupal::configFactory()->get('nodegrants.settings');
   $role_map = $config->get('role_map');
   $roles = $account->getRoles();
 
@@ -219,12 +229,12 @@ function nodeaccess_node_grants(AccountInterface $account, $op) {
   }
 
   $access = [
-    'nodeaccess_rid' => $rids,
-    'nodeaccess_uid' => [$account->id()],
+    'nodegrants_rid' => $rids,
+    'nodegrants_uid' => [$account->id()],
   ];
   // Anonymous visitors all share uid 0, so none of them is an author.
   if ($account->isAuthenticated()) {
-    $access['nodeaccess_author'] = [$account->id()];
+    $access['nodegrants_author'] = [$account->id()];
   }
 
   return $access;
@@ -233,12 +243,12 @@ function nodeaccess_node_grants(AccountInterface $account, $op) {
 /**
  * Implements hook_entity_update().
  */
-function nodeaccess_entity_update(EntityInterface $entity) {
-  $config = \Drupal::configFactory()->getEditable('nodeaccess.settings');
+function nodegrants_entity_update(EntityInterface $entity) {
+  $config = \Drupal::configFactory()->getEditable('nodegrants.settings');
 
   if ($entity instanceof RoleInterface) {
     /**
-     * We use to update our aliases here, but in the new version of nodeaccess
+     * We use to update our aliases here, but in the new version of nodegrants
      * we're not using separate aliases. Leaving this function here in the event
      * we need it later, but the TODO here is to remove it if it is not necessary.
      */
@@ -248,11 +258,11 @@ function nodeaccess_entity_update(EntityInterface $entity) {
 /**
  * Implements hook_entity_insert().
  */
-function nodeaccess_entity_insert(EntityInterface $entity) {
-  $config = \Drupal::configFactory()->getEditable('nodeaccess.settings');
+function nodegrants_entity_insert(EntityInterface $entity) {
+  $config = \Drupal::configFactory()->getEditable('nodegrants.settings');
   if ($entity instanceof RoleInterface) {
     // The role map doesn't exist yet if roles are created before
-    // nodeaccess_install() runs.
+    // nodegrants_install() runs.
     $roles_gids = array_flip($config->get('role_map') ?? []);
     $roles_gids[] = $entity->id();
     $config->set('role_map', array_flip($roles_gids));
@@ -263,8 +273,8 @@ function nodeaccess_entity_insert(EntityInterface $entity) {
 /**
  * Implements hook_entity_delete().
  */
-function nodeaccess_entity_delete(EntityInterface $entity) {
-  $config = \Drupal::configFactory()->getEditable('nodeaccess.settings');
+function nodegrants_entity_delete(EntityInterface $entity) {
+  $config = \Drupal::configFactory()->getEditable('nodegrants.settings');
 
   if ($entity instanceof RoleInterface) {
     $roles_gids = $config->get('role_map') ?? [];
@@ -277,14 +287,14 @@ function nodeaccess_entity_delete(EntityInterface $entity) {
 /**
  * Implements hook_node_delete().
  */
-function nodeaccess_node_delete(EntityInterface $node) {
+function nodegrants_node_delete(EntityInterface $node) {
   // Deleting node, delete related permissions.
   $db = \Drupal::database();
   $nid = $node->id();
-  $db->delete('nodeaccess')
+  $db->delete('nodegrants')
     ->condition('nid', $nid)
     ->execute();
-  $db->delete('nodeaccess_nodes_enabled')
+  $db->delete('nodegrants_nodes_enabled')
     ->condition('nid', $nid)
     ->execute();
 }
@@ -292,8 +302,8 @@ function nodeaccess_node_delete(EntityInterface $node) {
 /**
  * Implements hook_ENTITY_TYPE_delete().
  */
-function nodeaccess_node_type_delete(NodeTypeInterface $type) {
-  $config = \Drupal::configFactory()->getEditable('nodeaccess.settings');
+function nodegrants_node_type_delete(NodeTypeInterface $type) {
+  $config = \Drupal::configFactory()->getEditable('nodegrants.settings');
   $allowed_types = $config->get('allowed_types');
   unset($allowed_types[$type->id()]);
   $config->clear($type->id())
@@ -304,17 +314,28 @@ function nodeaccess_node_type_delete(NodeTypeInterface $type) {
 /**
  * Implements hook_node_access().
  */
-function nodeaccess_node_access(NodeInterface $node, $op, $account) {
-  $settings = \Drupal::configFactory()->get('nodeaccess.settings');
+function nodegrants_node_access(NodeInterface $node, $op, $account) {
+  $settings = \Drupal::configFactory()->get('nodegrants.settings');
   $role_map = $settings->get('role_map');
   $access = NULL;
 
   switch ($op) {
     case 'update':
     case 'delete':
+      $type = NodeType::load($node->bundle());
+
+      /**
+       * While nodegrants is turned off for the content type, grants stored for
+       * the node are ignored and Drupal's content permissions decide.
+       */
+      if (!nodegrants_type_enabled($type)) {
+        $access = AccessResult::neutral()->addCacheableDependency($type);
+        break;
+      }
+
       $access = AccessResult::forbidden();
       // We check if the role has particular access to this node.
-      $grants = _nodeaccess_get_grants($node);
+      $grants = _nodegrants_get_grants($node);
       $uid = $account->id();
 
       // If the node belongs to a deleted user.
@@ -355,18 +376,16 @@ function nodeaccess_node_access(NodeInterface $node, $op, $account) {
         }
 
         // The node's owner also gets the content type's author grants, when
-        // nodeaccess controls this node (it has role or user grants).
-        if (!empty($grants) && !$access->isAllowed() && $uid == $node->getOwnerId()) {
-          $type = NodeType::load($node->bundle());
-          if ($type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $node->bundle() . '_author_' . $op, FALSE)) {
-            $access = AccessResult::allowed();
-          }
-          $access->addCacheableDependency($type);
+        // nodegrants controls this node (it has role or user grants).
+        if (!empty($grants) && !$access->isAllowed() && $uid == $node->getOwnerId()
+          && $type->getThirdPartySetting('nodegrants', 'nodegrants_' . $node->bundle() . '_author_' . $op, FALSE)) {
+          $access = AccessResult::allowed();
         }
       }
 
-      // The result depends on the node's grants and owner.
-      $access->cachePerUser()->addCacheableDependency($node);
+      // The result depends on the node's grants and owner, and on whether
+      // nodegrants is turned on for its content type.
+      $access->cachePerUser()->addCacheableDependency($node)->addCacheableDependency($type);
       break;
 
     default:
@@ -381,16 +400,16 @@ function nodeaccess_node_access(NodeInterface $node, $op, $account) {
  * @return array
  *   An array of grants with keys 'rid' for roles and 'uid' for users.
  */
-function _nodeaccess_get_grants($node) {
+function _nodegrants_get_grants($node) {
 
   $grants = [];
   $db = \Drupal::database();
 
   // Load all roles.
-  $result = $db->select('nodeaccess', 'na')
+  $result = $db->select('nodegrants', 'na')
     ->fields('na', ['gid', 'grant_view', 'grant_update', 'grant_delete'])
     ->condition('nid', $node->id(), '=')
-    ->condition('realm', 'nodeaccess_rid', '=')
+    ->condition('realm', 'nodegrants_rid', '=')
     ->execute()
     ->fetchAll();
   foreach ($result as $grant) {
@@ -402,12 +421,12 @@ function _nodeaccess_get_grants($node) {
   }
 
   // Load users from node_access.
-  $entries = $db->select('nodeaccess', 'n');
+  $entries = $db->select('nodegrants', 'n');
   $entries->join('users_field_data', 'ufd', 'ufd.uid = n.gid');
   $entries->fields('n', ['grant_view', 'grant_update', 'grant_delete']);
   $entries->fields('ufd', ['uid', 'name']);
   $entries->condition('n.nid', $node->id(), '=');
-  $entries->condition('n.realm', 'nodeaccess_uid', '=');
+  $entries->condition('n.realm', 'nodegrants_uid', '=');
   $entries->orderBy('ufd.name', 'ASC');
   $results = $entries->execute();
 
@@ -436,7 +455,7 @@ function _nodeaccess_get_grants($node) {
  * grant access to the authenticated user, we will check the boxes on all roles except
  * anonymous.
  */
-function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+function nodegrants_form_node_form_alter(&$form, FormStateInterface $form_state, $form_id) {
   $db = \Drupal::database();
   $roles = Role::loadMultiple();
 
@@ -461,34 +480,34 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
   }
 
   /**
-   * If nodeaccess is not enabled for this node type, then do not put the tab
+   * If nodegrants is not enabled for this node type, then do not put the tab
    * on the form.
    */
-  $enabled = $type->getThirdPartySetting('nodeaccess', 'nodeaccess_grant_tab_' . $bundle, FALSE);
-  if ($enabled == FALSE) {
+  if (!nodegrants_type_enabled($type)) {
     return;
   }
 
   /**
-   * Only users who may grant node permissions get the nodeaccess form, and with
+   * Only users who may grant node permissions get the nodegrants form, and with
    * it the submit handler that rewrites this node's grants.
    */
   if (!\Drupal::currentUser()->hasPermission('grant node permissions')) {
     return;
   }
 
-  $form['nodeaccess'] = [
+  $form['nodegrants'] = [
     '#type' => 'details',
-    '#title' => t('Nodeaccess'),
+    '#title' => t('Nodegrants'),
     '#group' => 'advanced',
     '#attributes' => [
-      'class' => ['node-form-nodeaccess']
+      'class' => ['node-form-nodegrants']
     ],
     '#attached' => [
       'library' => ['node/drupal.node'],
     ],
     '#weight' => -1,
-    '#optional' => TRUE,
+    // Not #optional: that hides a group holder with no grouped members, and
+    // the table below is an ordinary child, not a member.
     '#open' => FALSE,
     'table' => [
       '#type' => 'table',
@@ -501,26 +520,21 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
       '#weight' => 10,
       '#attached' => [
         'library' => [
-          'nodeaccess/form-styling',
+          'nodegrants/form-styling',
         ],
       ],
     ],
   ];
-  $form['nodeaccess_enable'] = [
-    '#type' => 'checkbox',
-    '#title' => t('Engage nodeaccess control for this node'),
-    '#group' => 'nodeaccess',
-    '#weight' => 0,
-  ];
 
   /**
-   * If we're not using the Claro theme, move the node access form to the
-   * top of the node edit/create page instead of in the boxes along the
-   * side due to theme issues.
+   * The sidebar ("advanced" group) only renders in themes with a two-column
+   * node form: Claro, Default Admin (its Drupal 12 replacement) and their
+   * sub-themes. In any other theme, move the pane to the top of the form.
    */
-  $admin_theme = \Drupal::config('system.theme')->get('admin');
-  if ($admin_theme != 'claro') {
-    unset($form['nodeaccess']['#group']);
+  $active_theme = \Drupal::theme()->getActiveTheme();
+  $theme_chain = array_merge([$active_theme->getName()], array_keys($active_theme->getBaseThemeExtensions()));
+  if (!array_intersect($theme_chain, ['claro', 'default_admin'])) {
+    unset($form['nodegrants']['#group']);
   }
 
   /**
@@ -538,7 +552,7 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
   $use_defaults = FALSE;
   $entries = [];
   if (!empty($nid)) {
-    $entries = $db->select('nodeaccess', 'n')
+    $entries = $db->select('nodegrants', 'n')
       ->fields('n')
       ->condition('nid', $nid, '=')
       ->execute()
@@ -555,24 +569,20 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
   $user_entries = $role_entries = [];
   foreach ($entries as $entry) {
     $entry = (array) $entry;
-    if ($entry['realm'] == 'nodeaccess_uid') {
+    if ($entry['realm'] == 'nodegrants_uid') {
       $user_entries[$entry['gid']] = $entry;
     }
-    if ($entry['realm'] == 'nodeaccess_rid') {
+    if ($entry['realm'] == 'nodegrants_rid') {
       $role_entries[$entry['gid']] = $entry;
     }
   }
 
   /**
-   * If authenticated users are allowed nodeaccess, so are all roles not
+   * If authenticated users are allowed nodegrants, so are all roles not
    * named anonymous.
    */
-  $allowed_roles = nodeaccess_get_allowed_roles();
-  $role_map = \Drupal::config('nodeaccess.settings')->get('role_map');
-
-  if ($use_defaults === FALSE) {
-    $form['nodeaccess_enable']['#default_value'] = TRUE;
-  }
+  $allowed_roles = nodegrants_get_allowed_roles();
+  $role_map = \Drupal::config('nodegrants.settings')->get('role_map');
 
   $i = 0;
   $permissions = ['view', 'update', 'delete'];
@@ -582,12 +592,12 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
     }
 
     foreach ($permissions as $permission) {
-      $form['nodeaccess']['table'][$key][$bundle . '_' . $key] = [
+      $form['nodegrants']['table'][$key][$bundle . '_' . $key] = [
         '#markup' => $role->label(),
       ];
       $default_value = FALSE;
       if ($use_defaults === TRUE) {
-        $default_value = $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $bundle . '_' . $key . '_' . $permission, FALSE);
+        $default_value = $type->getThirdPartySetting('nodegrants', 'nodegrants_' . $bundle . '_' . $key . '_' . $permission, FALSE);
       }
       else {
         // Pull grants from our grants table. A role with no stored grant row
@@ -598,7 +608,7 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
         }
       }
 
-      $form['nodeaccess']['table'][$key][$bundle . '_' . $key . '_' . $permission] = [
+      $form['nodegrants']['table'][$key][$bundle . '_' . $key . '_' . $permission] = [
         '#type' => 'checkbox',
         '#default_value' => $default_value,
       ];
@@ -627,38 +637,38 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
      * string would lose the placeholder and every removal would get a 403.
      */
     $query = ['nid' => $nid, 'uid' => $gid];
-    $form['nodeaccess']['table']['existing_user-'.$gid]['name'] = [
+    $form['nodegrants']['table']['existing_user-'.$gid]['name'] = [
       'name' => [
         '#plain_text' => $name,
       ],
       'remove' => [
         '#type' => 'link',
         '#title' => t('remove'),
-        '#url' => Url::fromRoute('nodeaccess.remove.user', $query),
+        '#url' => Url::fromRoute('nodegrants.remove.user', $query),
         '#prefix' => ' (',
         '#suffix' => ')',
       ],
     ];
     foreach ($permissions as $permission) {
-      $form['nodeaccess']['table']['existing_user-'.$gid][$gid . '-' . $permission] = [
+      $form['nodegrants']['table']['existing_user-'.$gid][$gid . '-' . $permission] = [
         '#type' => 'checkbox',
         '#default_value' => $entry['grant_' . $permission],
       ];
     }
   }
 
-  $form['nodeaccess']['table']['user'][$bundle . '_user'] = [
+  $form['nodegrants']['table']['user'][$bundle . '_user'] = [
     '#type' => 'textfield',
     '#size' => 30,
     '#maxlength' => 60,
-    '#autocomplete_route_name' => 'nodeaccess.autocomplete.users',
+    '#autocomplete_route_name' => 'nodegrants.autocomplete.users',
     // Lets the autocomplete leave out users already listed on this node.
     '#autocomplete_query_parameters' => !empty($nid) ? ['nid' => $nid] : [],
-    '#element_validate' => ['nodeaccess_new_user_validate'],
+    '#element_validate' => ['nodegrants_new_user_validate'],
     '#default_value' => '',
   ];
   foreach ($permissions as $permission) {
-    $form['nodeaccess']['table']['user'][$bundle . '_user_' . $permission] = [
+    $form['nodegrants']['table']['user'][$bundle . '_user_' . $permission] = [
       '#type' => 'checkbox',
       '#default_value' => 0,
     ];
@@ -671,7 +681,7 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
 
   foreach (array_keys($form['actions']) as $action) {
     if ($action != 'preview' && isset($form['actions'][$action]['#type']) && $form['actions'][$action]['#type'] === 'submit') {
-      $form['actions'][$action]['#submit'][] = 'nodeaccess_custom_entity_submit';
+      $form['actions'][$action]['#submit'][] = 'nodegrants_custom_entity_submit';
     }
   }
 }
@@ -681,15 +691,12 @@ function nodeaccess_form_node_form_alter(&$form, FormStateInterface $form_state,
  *
  * The submit handler writes a row for every listed user and then one for the
  * new user, so adding a user who is already listed would violate the
- * nodeaccess table's primary key. The autocomplete leaves listed users out,
+ * nodegrants table's primary key. The autocomplete leaves listed users out,
  * but the "name [uid]" value can still be typed by hand.
  *
- * @see nodeaccess_custom_entity_submit()
+ * @see nodegrants_custom_entity_submit()
  */
-function nodeaccess_new_user_validate(array &$element, FormStateInterface $form_state) {
-  if (!$form_state->getValue('nodeaccess_enable')) {
-    return;
-  }
+function nodegrants_new_user_validate(array &$element, FormStateInterface $form_state) {
   if (preg_match('/^(.+) \[(\d+)\]$/', (string) $element['#value'], $matches)
     && $form_state->hasValue(['table', 'existing_user-' . $matches[2]])) {
     $form_state->setError($element, t('%name already has grants on this node. Change them in their row instead.', [
@@ -699,15 +706,15 @@ function nodeaccess_new_user_validate(array &$element, FormStateInterface $form_
 }
 
 /**
- * Our custom submit hook as defined in nodeaccess_form_node_form_alter. This
+ * Our custom submit hook as defined in nodegrants_form_node_form_alter. This
  * is called after the content has already been saved to the database and the
  * node id is available for us to use.
  *
- * @see nodeaccess_form_node_form_alter
+ * @see nodegrants_form_node_form_alter
  */
-function nodeaccess_custom_entity_submit($form, FormStateInterface $form_state) {
+function nodegrants_custom_entity_submit($form, FormStateInterface $form_state) {
 
-  $allowed_roles = nodeaccess_get_allowed_roles();
+  $allowed_roles = nodegrants_get_allowed_roles();
   $db = \Drupal::database();
   $values = $form_state->getValues();
   $roles = Role::loadMultiple();
@@ -715,140 +722,141 @@ function nodeaccess_custom_entity_submit($form, FormStateInterface $form_state) 
   $type = NodeType::load($values['bundle']);
   $node = Node::load($values['nid']);
 
-  $config = \Drupal::configFactory()->getEditable('nodeaccess.settings');
+  $config = \Drupal::configFactory()->getEditable('nodegrants.settings');
   $roles_gids = $config->get('role_map');
 
   /**
    * We're going to re-write the access rules here, so clear out any that might
    * be there.
    */
-  $q = $db->delete('nodeaccess')
+  $q = $db->delete('nodegrants')
     ->condition('nid', $values['nid'])
     ->execute();
-  $q = $db->delete('nodeaccess_nodes_enabled')
+  $q = $db->delete('nodegrants_nodes_enabled')
     ->condition('nid', $values['nid'])
     ->execute();
 
   /**
-   * Only do the rest if the nodeaccess checks are enabled for this particular node.
+   * Every save through the pane puts the node under nodegrants control: write
+   * its role, user and author rows, then mark it enabled. There is no per-node
+   * on/off toggle.
    */
-  if ($values['nodeaccess_enable'] == 1) {
-    $grants = [];
-    $role_permissions = ['view', 'update', 'delete'];
+  $grants = [];
 
-    foreach ($values['table'] as $i => $permissions) {
-      if (!isset($allowed_roles[$i]) || $allowed_roles[$i] != TRUE) {
-        continue;
-      }
-      $grants[$i]['grant_view'] = (int) $values['table'][$i][$bundle . '_' . $i . '_view'];
-      $grants[$i]['grant_update'] = (int) $values['table'][$i][$bundle . '_' . $i . '_update'];
-      $grants[$i]['grant_delete'] = (int) $values['table'][$i][$bundle . '_' . $i . '_delete'];
+  foreach ($values['table'] as $i => $permissions) {
+    if (!isset($allowed_roles[$i]) || $allowed_roles[$i] != TRUE) {
+      continue;
     }
+    $grants[$i]['grant_view'] = (int) $values['table'][$i][$bundle . '_' . $i . '_view'];
+    $grants[$i]['grant_update'] = (int) $values['table'][$i][$bundle . '_' . $i . '_update'];
+    $grants[$i]['grant_delete'] = (int) $values['table'][$i][$bundle . '_' . $i . '_delete'];
+  }
 
-    foreach ($grants as $key => $grant) {
-      $db->insert('nodeaccess')
-        ->fields([
-          'nid' => $values['nid'],
-          'gid' => $roles_gids[$key],
-          'realm' => 'nodeaccess_rid',
-          'grant_view' => $grant['grant_view'],
-          'grant_update' => $grant['grant_update'],
-          'grant_delete' => $grant['grant_delete'],
-        ])
-        ->execute();
-    }
-
-    /**
-     * Update user specific access roles.
-     */
-    $grant = [];
-    foreach ($values['table'] as $key => $value) {
-      $parts = explode('-', $key);
-      if ($parts[0] != 'existing_user' || !isset($parts[1])) {
-        continue;
-      }
-
-      foreach ($value as $combo => $permission) {
-        $combo_parts = explode('-', $combo);
-        $gid = $combo_parts[0];
-        $perm = $combo_parts[1] ?? NULL;
-        if (empty($perm)) {
-          continue;
-        }
-        $grant[$gid]['grant_' . $perm] = $permission;
-      }
-      foreach ($grant as $gid => $perm) {
-        $db->insert('nodeaccess')
-          ->fields([
-            'nid' => $values['nid'],
-            'gid' => $gid,
-            'realm' => 'nodeaccess_uid',
-            'grant_view' => (int) $perm['grant_view'],
-            'grant_update' => (int) $perm['grant_update'],
-            'grant_delete' => (int) $perm['grant_delete'],
-          ])
-          ->execute();
-      }
-      $grant = [];
-    }
-
-    /**
-     * Check for new user grants. Make sure the uid we're getting matches the user in the text.
-     */
-    if (!empty($values['table']['user'][$bundle . '_user'])) {
-      // Expect the "name [uid]" format the autocomplete produces.
-      $ids = [];
-      $uid = NULL;
-      if (preg_match('/^(.+) \[(\d+)\]$/', $values['table']['user'][$bundle . '_user'], $matches)) {
-        $username = $matches[1];
-        $uid = $matches[2];
-        $query = $db->select('users_field_data', 'ufd')
-          ->fields('ufd', ['uid', 'name'])
-          ->condition('name', $username)
-          ->condition('uid', $uid)
-          ->execute();
-        $ids = $query->fetchAll();
-      }
-      if (count($ids) == 1) {
-        $db->insert('nodeaccess')
-          ->fields([
-            'nid' => $values['nid'],
-            'gid' => $uid,
-            'realm' => 'nodeaccess_uid',
-            'grant_view' => (int) $values['table']['user'][$bundle . '_user_view'],
-            'grant_update' => (int) $values['table']['user'][$bundle . '_user_update'],
-            'grant_delete' => (int) $values['table']['user'][$bundle . '_user_delete'],
-        ])
-        ->execute();
-      }
-      else {
-        \Drupal::messenger()->addError(t('The user-specific permissions could not be assigned.'));
-      }
-    }
-
-    /**
-     * Store the author grant from the content type defaults. Access doesn't
-     * use this row: nodeaccess_node_access_records() builds the author grant
-     * for the node's current owner. It is kept because an engaged node must
-     * have at least one row; the node form reads "no rows" as not engaged.
-     */
-    $author_id = $node->getOwnerId();
-    $db->insert('nodeaccess')
+  foreach ($grants as $key => $grant) {
+    $db->insert('nodegrants')
       ->fields([
         'nid' => $values['nid'],
-        'gid' => $author_id,
-        'realm' => 'nodeaccess_author',
-        'grant_view' => (int) $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $values['bundle'] . '_' . 'author_view', FALSE),
-        'grant_update' => (int) $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $values['bundle'] . '_' . 'author_update', FALSE),
-        'grant_delete' => (int) $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $values['bundle'] . '_' . 'author_delete', FALSE),
-    ])->execute();
-
-    $db->insert('nodeaccess_nodes_enabled')
-      ->fields([
-        'nid' => $values['nid'],
+        'gid' => $roles_gids[$key],
+        'realm' => 'nodegrants_rid',
+        'grant_view' => $grant['grant_view'],
+        'grant_update' => $grant['grant_update'],
+        'grant_delete' => $grant['grant_delete'],
       ])
       ->execute();
   }
+
+  /**
+   * Update user specific access roles.
+   */
+  $grant = [];
+  foreach ($values['table'] as $key => $value) {
+    $parts = explode('-', $key);
+    if ($parts[0] != 'existing_user' || !isset($parts[1])) {
+      continue;
+    }
+
+    foreach ($value as $combo => $permission) {
+      $combo_parts = explode('-', $combo);
+      $gid = $combo_parts[0];
+      $perm = $combo_parts[1] ?? NULL;
+      if (empty($perm)) {
+        continue;
+      }
+      $grant[$gid]['grant_' . $perm] = $permission;
+    }
+    foreach ($grant as $gid => $perm) {
+      $db->insert('nodegrants')
+        ->fields([
+          'nid' => $values['nid'],
+          'gid' => $gid,
+          'realm' => 'nodegrants_uid',
+          'grant_view' => (int) $perm['grant_view'],
+          'grant_update' => (int) $perm['grant_update'],
+          'grant_delete' => (int) $perm['grant_delete'],
+        ])
+        ->execute();
+    }
+    $grant = [];
+  }
+
+  /**
+   * Check for new user grants. Make sure the uid we're getting matches the user in the text.
+   */
+  if (!empty($values['table']['user'][$bundle . '_user'])) {
+    // Expect the "name [uid]" format the autocomplete produces.
+    $ids = [];
+    $uid = NULL;
+    if (preg_match('/^(.+) \[(\d+)\]$/', $values['table']['user'][$bundle . '_user'], $matches)) {
+      $username = $matches[1];
+      $uid = $matches[2];
+      $query = $db->select('users_field_data', 'ufd')
+        ->fields('ufd', ['uid', 'name'])
+        ->condition('name', $username)
+        ->condition('uid', $uid)
+        ->execute();
+      $ids = $query->fetchAll();
+    }
+    if (count($ids) == 1) {
+      $db->insert('nodegrants')
+        ->fields([
+          'nid' => $values['nid'],
+          'gid' => $uid,
+          'realm' => 'nodegrants_uid',
+          'grant_view' => (int) $values['table']['user'][$bundle . '_user_view'],
+          'grant_update' => (int) $values['table']['user'][$bundle . '_user_update'],
+          'grant_delete' => (int) $values['table']['user'][$bundle . '_user_delete'],
+        ])
+        ->execute();
+    }
+    else {
+      \Drupal::messenger()->addError(t('The user-specific permissions could not be assigned.'));
+    }
+  }
+
+  /**
+   * Store the author grant from the content type defaults. Access doesn't
+   * use this row: nodegrants_node_access_records() builds the author grant
+   * for the node's current owner. It is kept so a node under nodegrants
+   * control always has at least one row; the node form shows the content
+   * type defaults when there are none.
+   */
+  $author_id = $node->getOwnerId();
+  $db->insert('nodegrants')
+    ->fields([
+      'nid' => $values['nid'],
+      'gid' => $author_id,
+      'realm' => 'nodegrants_author',
+      'grant_view' => (int) $type->getThirdPartySetting('nodegrants', 'nodegrants_' . $values['bundle'] . '_' . 'author_view', FALSE),
+      'grant_update' => (int) $type->getThirdPartySetting('nodegrants', 'nodegrants_' . $values['bundle'] . '_' . 'author_update', FALSE),
+      'grant_delete' => (int) $type->getThirdPartySetting('nodegrants', 'nodegrants_' . $values['bundle'] . '_' . 'author_delete', FALSE),
+    ])
+    ->execute();
+
+  $db->insert('nodegrants_nodes_enabled')
+    ->fields([
+      'nid' => $values['nid'],
+    ])
+    ->execute();
 
   \Drupal::entityTypeManager()->getAccessControlHandler('node')->acquireGrants($node);
 
@@ -860,24 +868,25 @@ function nodeaccess_custom_entity_submit($form, FormStateInterface $form_state) 
 /**
  * Implements hook_form_FORM_ID_alter().
  */
-function nodeaccess_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+function nodegrants_form_alter(&$form, FormStateInterface $form_state, $form_id) {
 
   if ($form_id == 'node_type_add_form' || $form_id == 'node_type_edit_form') {
 
     $type = $form_state->getFormObject()->getEntity();
-    $bundle = $form['type']['#default_value'];
-    $form['nodeaccess'] = [
+    // NULL on the add form: the machine name is only known at submit.
+    $bundle = $type->id();
+    $form['nodegrants'] = [
       '#type' => 'details',
-      '#title' => t('Nodeaccess'),
+      '#title' => t('Nodegrants'),
       '#group' => 'additional_settings',
       '#weight' => 90,
     ];
-    $form['nodeaccess']['enabled'] = [
+    $form['nodegrants']['enabled'] = [
       '#type' => 'checkbox',
       '#title' => t('Show grant tab for this node type.'),
-      '#default_value' => $type->getThirdPartySetting('nodeaccess', 'nodeaccess_grant_tab_' . $bundle, FALSE),
+      '#default_value' => $type->getThirdPartySetting('nodegrants', 'nodegrants_grant_tab_' . $bundle, FALSE),
     ];
-    $form['nodeaccess']['table'] = [
+    $form['nodegrants']['table'] = [
       '#type' => 'table',
       '#caption' => t(''),
       '#header' => [
@@ -886,10 +895,10 @@ function nodeaccess_form_alter(&$form, FormStateInterface $form_state, $form_id)
         t('Edit'),
         t('Delete'),
       ],
-      '#id' => 'nodeaccess-table',
+      '#id' => 'nodegrants-table',
       '#attached' => [
         'library' => [
-          'nodeaccess/form-styling',
+          'nodegrants/form-styling',
         ],
       ],
     ];
@@ -898,70 +907,125 @@ function nodeaccess_form_alter(&$form, FormStateInterface $form_state, $form_id)
      * Iterate through our roles and present the default option for each one. Include authors at
      * the bottom of the list.
      */
+    /**
+     * Checkbox keys leave the bundle out. On the add form it is not known
+     * until submit, so the entity builder prefixes each key with the bundle
+     * that was copied onto the entity.
+     */
     $permissions = ['view', 'update', 'delete'];
     $roles = Role::loadMultiple();
     foreach ($roles as $key => $role) {
+      $form['nodegrants']['table'][$key]['label'] = [
+        '#markup' => $role->label(),
+      ];
       foreach ($permissions as $permission) {
-        $form['nodeaccess']['table'][$key][$bundle . '_' . $key] = [
-          '#markup' => $role->label(),
-        ];
-        $form['nodeaccess']['table'][$key][$bundle . '_' . $key . '_' . $permission] = [
+        $form['nodegrants']['table'][$key][$key . '_' . $permission] = [
           '#type' => 'checkbox',
-          '#default_value' => $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $bundle . '_' . $key . '_' . $permission, FALSE),
+          '#default_value' => $type->getThirdPartySetting('nodegrants', 'nodegrants_' . $bundle . '_' . $key . '_' . $permission, FALSE),
         ];
       }
     }
 
+    $form['nodegrants']['table']['author']['label'] = [
+      '#markup' => 'Node Author (Not editable per node.)',
+    ];
     foreach ($permissions as $permission) {
-      $form['nodeaccess']['table']['author']['author'] = [
-        '#markup' => 'Node Author (Not editable per node.)',
-      ];
-      $form['nodeaccess']['table']['author'][$bundle . '_author_' . $permission] = [
+      $form['nodegrants']['table']['author']['author_' . $permission] = [
         '#type' => 'checkbox',
-        '#default_value' => $type->getThirdPartySetting('nodeaccess', 'nodeaccess_' . $bundle . '_' . 'author_' . $permission, FALSE),
+        '#default_value' => $type->getThirdPartySetting('nodegrants', 'nodegrants_' . $bundle . '_' . 'author_' . $permission, FALSE),
       ];
     }
-    $form['#entity_builders'][] = 'nodeaccess_node_type_edit_form_builder';
+    $form['#entity_builders'][] = 'nodegrants_node_type_edit_form_builder';
   }
 }
 
 /**
- * Entity builder for the nodeaccess permissions form.
+ * Entity builder for the nodegrants permissions form.
  *
- * @see nodeaccess_form_node_type_edit_form_alter()
+ * @see nodegrants_form_node_type_edit_form_alter()
  */
-function nodeaccess_node_type_edit_form_builder($entity_type, NodeTypeInterface $type, &$form, FormStateInterface $form_state) {
-  $permission_definitions = $form_state->getValue('table');
-  $bundle = $form_state->getValue('type');
-  $type->setThirdPartySetting('nodeaccess', 'nodeaccess_grant_tab_' . $bundle, $form_state->getValue('enabled'));
+function nodegrants_node_type_edit_form_builder($entity_type, NodeTypeInterface $type, &$form, FormStateInterface $form_state) {
+  // Form values are copied onto the entity before the builders run, so the id
+  // is set here on the add form too.
+  $bundle = $type->id();
+  $type->setThirdPartySetting('nodegrants', 'nodegrants_grant_tab_' . $bundle, (int) $form_state->getValue('enabled'));
 
-  foreach ($permission_definitions as $key => $permissions) {
-    foreach ($permissions as $permission => $enabled) {
-      $type->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $permission, $enabled);
+  // Rows are keyed by role id or "author"; each value key is
+  // "{role}_{view|update|delete}". The label cells have no value.
+  foreach ($form_state->getValue('table', []) as $row) {
+    foreach ($row as $key => $enabled) {
+      $type->setThirdPartySetting('nodegrants', 'nodegrants_' . $bundle . '_' . $key, (int) $enabled);
     }
   }
   Cache::invalidateTags(['rendered']);
 }
 
 /**
+ * Implements hook_ENTITY_TYPE_presave() for node_type.
+ *
+ * Turning nodegrants on or off for a content type changes what
+ * nodegrants_node_access_records() returns for every node of that type, but
+ * the node access table only picks that up on a rebuild. Flag one; core then
+ * shows a "rebuild permissions" notice with a link on the admin pages. The
+ * flag is used instead of rebuilding here so the admin can finish their
+ * changes and rebuild once, as node_access_rebuild() recommends.
+ */
+function nodegrants_node_type_presave(NodeTypeInterface $type) {
+  if ($type->isNew()) {
+    return;
+  }
+  $original = \Drupal::entityTypeManager()->getStorage('node_type')->loadUnchanged($type->id());
+  if ($original instanceof NodeTypeInterface && nodegrants_type_enabled($original) !== nodegrants_type_enabled($type)) {
+    _nodegrants_flag_access_rebuild();
+  }
+}
+
+/**
+ * Flags the node access table for a rebuild.
+ *
+ * Drupal 11.4 moved this behind the NodeAccessRebuild service and deprecated
+ * node_access_needs_rebuild(), which older 11.x releases still need.
+ */
+function _nodegrants_flag_access_rebuild(): void {
+  if (class_exists('Drupal\node\NodeAccessRebuild')) {
+    \Drupal::service('Drupal\node\NodeAccessRebuild')->setNeedsRebuild(TRUE);
+  }
+  else {
+    node_access_needs_rebuild(TRUE);
+  }
+}
+
+/**
+ * Whether nodegrants is turned on for a content type.
+ *
+ * This is the "Show grant tab" setting on the content type form. While it is
+ * off, nodes of the type keep any grants stored for them, but none apply:
+ * nodegrants_node_access_records() and nodegrants_node_access() behave as if
+ * the node had never been saved through the Nodegrants pane.
+ */
+function nodegrants_type_enabled(NodeTypeInterface $type): bool {
+  return (bool) $type->getThirdPartySetting('nodegrants', 'nodegrants_grant_tab_' . $type->id(), FALSE);
+}
+
+/**
  * Get the roles that are permitted per node content.
  */
-function nodeaccess_get_allowed_roles() {
+function nodegrants_get_allowed_roles() {
   $roles = Role::loadMultiple();
   $all_non_anonymous_roles = FALSE;
   $authenticated = $roles['authenticated'];
-  if ($authenticated->hasPermission('include in nodeaccess grants')) {
+  if ($authenticated->hasPermission('include in nodegrants grants')) {
     $all_non_anonymous_roles = TRUE;
   }
 
-  /** Determine which roles have nodeaccess. */
+  /** Determine which roles have nodegrants. */
   $allowed_roles = [];
   foreach ($roles as $id => $role) {
     if ($all_non_anonymous_roles === TRUE) {
       $allowed_roles[$id] = TRUE;
     }
     else {
-      if ($role->hasPermission('include in nodeaccess grants')) {
+      if ($role->hasPermission('include in nodegrants grants')) {
         $allowed_roles[$id] = TRUE;
       }
     }

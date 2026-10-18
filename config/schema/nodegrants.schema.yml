@@ -1,8 +1,8 @@
-# Schema for the configuration files of the Nodeaccess module.
+# Schema for the configuration files of the Nodegrants module.
 
-nodeaccess.settings:
+nodegrants.settings:
   type: config_object
-  label: 'Nodeaccess settings'
+  label: 'Nodegrants settings'
   mapping:
     role_map:
       type: sequence
@@ -19,11 +19,11 @@ nodeaccess.settings:
         type: integer
         label: 'Enabled'
 
-# Keys are nodeaccess_grant_tab_{bundle} and
-# nodeaccess_{bundle}_{role or "author"}_{view|update|delete}.
-node.type.*.third_party.nodeaccess:
+# Keys are nodegrants_grant_tab_{bundle} and
+# nodegrants_{bundle}_{role or "author"}_{view|update|delete}.
+node.type.*.third_party.nodegrants:
   type: sequence
-  label: 'Nodeaccess settings for this content type'
+  label: 'Nodegrants settings for this content type'
   sequence:
     type: integer
     label: 'Grant tab or default grant (0 or 1)'

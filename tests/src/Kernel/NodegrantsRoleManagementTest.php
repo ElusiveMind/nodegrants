@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Drupal\Tests\nodeaccess\Kernel;
+namespace Drupal\Tests\nodegrants\Kernel;
 
 use Drupal\Core\Database\Database;
 use Drupal\KernelTests\KernelTestBase;
@@ -14,11 +14,11 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
- * Tests nodeaccess role map management when roles are added/removed.
+ * Tests nodegrants role map management when roles are added/removed.
  */
-#[Group('nodeaccess')]
+#[Group('nodegrants')]
 #[RunTestsInSeparateProcesses]
-class NodeaccessRoleManagementTest extends KernelTestBase {
+class NodegrantsRoleManagementTest extends KernelTestBase {
 
   use NodeCreationTrait {
     getNodeByTitle as drupalGetNodeByTitle;
@@ -38,7 +38,7 @@ class NodeaccessRoleManagementTest extends KernelTestBase {
    */
   protected static $modules = [
     'node',
-    'nodeaccess',
+    'nodegrants',
     'datetime',
     'user',
     'system',
@@ -53,7 +53,7 @@ class NodeaccessRoleManagementTest extends KernelTestBase {
   protected function setUp(): void {
     parent::setUp();
     $this->installSchema('node', 'node_access');
-    $this->installSchema('nodeaccess', ['nodeaccess', 'nodeaccess_nodes_enabled']);
+    $this->installSchema('nodegrants', ['nodegrants', 'nodegrants_nodes_enabled']);
     $this->installEntitySchema('user');
     $this->installEntitySchema('node');
     $this->installConfig(['filter', 'node', 'user']);
@@ -66,16 +66,16 @@ class NodeaccessRoleManagementTest extends KernelTestBase {
       'name' => 'Basic page',
     ]);
 
-    // Run nodeaccess install.
-    \Drupal::moduleHandler()->loadInclude('nodeaccess', 'install');
-    nodeaccess_install();
+    // Run nodegrants install.
+    \Drupal::moduleHandler()->loadInclude('nodegrants', 'install');
+    nodegrants_install();
   }
 
   /**
    * Tests that creating a new role adds it to the role_map.
    */
   public function testNewRoleAddsToRoleMap(): void {
-    $config = \Drupal::configFactory()->get('nodeaccess.settings');
+    $config = \Drupal::configFactory()->get('nodegrants.settings');
     $role_map_before = $config->get('role_map');
 
     // Create a new role.
@@ -85,7 +85,7 @@ class NodeaccessRoleManagementTest extends KernelTestBase {
     ]);
     $role->save();
 
-    $config = \Drupal::configFactory()->get('nodeaccess.settings');
+    $config = \Drupal::configFactory()->get('nodegrants.settings');
     $role_map_after = $config->get('role_map');
 
     $this->assertArrayHasKey('editor', $role_map_after, 'New role was added to role_map.');
@@ -103,14 +103,14 @@ class NodeaccessRoleManagementTest extends KernelTestBase {
     ]);
     $role->save();
 
-    $config = \Drupal::configFactory()->get('nodeaccess.settings');
+    $config = \Drupal::configFactory()->get('nodegrants.settings');
     $role_map = $config->get('role_map');
     $this->assertArrayHasKey('editor', $role_map);
 
     // Delete the role.
     $role->delete();
 
-    $config = \Drupal::configFactory()->get('nodeaccess.settings');
+    $config = \Drupal::configFactory()->get('nodegrants.settings');
     $role_map = $config->get('role_map');
     $this->assertArrayNotHasKey('editor', $role_map, 'Deleted role was removed from role_map.');
   }
@@ -119,7 +119,7 @@ class NodeaccessRoleManagementTest extends KernelTestBase {
    * Tests the role_map is correctly populated on install.
    */
   public function testRoleMapOnInstall(): void {
-    $config = \Drupal::configFactory()->get('nodeaccess.settings');
+    $config = \Drupal::configFactory()->get('nodegrants.settings');
     $role_map = $config->get('role_map');
 
     $this->assertNotEmpty($role_map, 'Role map is not empty after install.');
@@ -133,7 +133,7 @@ class NodeaccessRoleManagementTest extends KernelTestBase {
   }
 
   /**
-   * Tests nodeaccess_get_allowed_roles() with permission assignment.
+   * Tests nodegrants_get_allowed_roles() with permission assignment.
    */
   public function testAllowedRoles(): void {
     // Create a custom role and give it the permission.
@@ -141,10 +141,10 @@ class NodeaccessRoleManagementTest extends KernelTestBase {
       'id' => 'editor',
       'label' => 'Editor',
     ]);
-    $role->grantPermission('include in nodeaccess grants');
+    $role->grantPermission('include in nodegrants grants');
     $role->save();
 
-    $allowed = nodeaccess_get_allowed_roles();
+    $allowed = nodegrants_get_allowed_roles();
     $this->assertTrue($allowed['editor'] ?? FALSE, 'Role with permission is allowed.');
   }
 
@@ -153,10 +153,10 @@ class NodeaccessRoleManagementTest extends KernelTestBase {
    */
   public function testAuthenticatedRoleGrantsAllRoles(): void {
     $authenticated = Role::load('authenticated');
-    $authenticated->grantPermission('include in nodeaccess grants');
+    $authenticated->grantPermission('include in nodegrants grants');
     $authenticated->save();
 
-    $allowed = nodeaccess_get_allowed_roles();
+    $allowed = nodegrants_get_allowed_roles();
 
     // All roles should be allowed (including anonymous because the code
     // iterates all roles and sets TRUE when all_non_anonymous_roles is TRUE).

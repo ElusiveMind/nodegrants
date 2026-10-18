@@ -2,7 +2,7 @@
 
 /**
  * @file
- * Install/uninstall functions for Nodeaccess.
+ * Install/uninstall functions for Nodegrants.
  */
 
 use Drupal\node\Entity\NodeType;
@@ -12,13 +12,13 @@ use Drupal\Core\Database\Database;
 /**
  * Implements hook_install().
  */
-function nodeaccess_install() {
-  $config = \Drupal::configFactory()->getEditable('nodeaccess.settings');
+function nodegrants_install() {
+  $config = \Drupal::configFactory()->getEditable('nodegrants.settings');
   $roles = Role::loadMultiple();
 
   /**
    * Set up an ID for our roles that way we can use them with our various node_access
-   * grants (our nodeaccess ones too!). This becomes the gid for role based access
+   * grants (our nodegrants ones too!). This becomes the gid for role based access
    * permissions.
    */
   $i = 0;
@@ -32,27 +32,27 @@ function nodeaccess_install() {
 
   /**
    * Define the default grants for each role based on what is set up in our existing
-   * permissions. Note that nodeaccess will not be enabled by default for individual
+   * permissions. Note that nodegrants will not be enabled by default for individual
    * nodes, so we are just setting up defaults, not assigning them to each node.
    */
   $anonymous_role = Role::load('anonymous');
   $authenticated_role = Role::load('authenticated');
 
   foreach (NodeType::loadMultiple() as $type => $bundle) {
-    $bundle->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $type . '_' . 'anonymous_view', (int) $anonymous_role->hasPermission('access content'));
-    $bundle->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $type . '_' . 'authenticated_view', (int) $authenticated_role->hasPermission('access content'));
+    $bundle->setThirdPartySetting('nodegrants', 'nodegrants_' . $type . '_' . 'anonymous_view', (int) $anonymous_role->hasPermission('access content'));
+    $bundle->setThirdPartySetting('nodegrants', 'nodegrants_' . $type . '_' . 'authenticated_view', (int) $authenticated_role->hasPermission('access content'));
 
     $edit_perm = 'edit any ' . $type . ' content';
-    $bundle->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $type . '_' . 'anonymous_update', (int) $anonymous_role->hasPermission($edit_perm));
-    $bundle->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $type . '_' . 'authenticated_update', (int) $authenticated_role->hasPermission($edit_perm));
+    $bundle->setThirdPartySetting('nodegrants', 'nodegrants_' . $type . '_' . 'anonymous_update', (int) $anonymous_role->hasPermission($edit_perm));
+    $bundle->setThirdPartySetting('nodegrants', 'nodegrants_' . $type . '_' . 'authenticated_update', (int) $authenticated_role->hasPermission($edit_perm));
 
     $delete_perm = 'delete any ' . $type . ' content';
-    $bundle->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $type . '_' . 'anonymous_delete', (int) $anonymous_role->hasPermission($delete_perm));
-    $bundle->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $type . '_' . 'authenticated_delete', (int) $authenticated_role->hasPermission($delete_perm));
+    $bundle->setThirdPartySetting('nodegrants', 'nodegrants_' . $type . '_' . 'anonymous_delete', (int) $anonymous_role->hasPermission($delete_perm));
+    $bundle->setThirdPartySetting('nodegrants', 'nodegrants_' . $type . '_' . 'authenticated_delete', (int) $authenticated_role->hasPermission($delete_perm));
 
-    $bundle->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $type . '_' . 'author_view', 1);
-    $bundle->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $type . '_' . 'author_update', 1);
-    $bundle->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $type . '_' . 'author_delete', 1);
+    $bundle->setThirdPartySetting('nodegrants', 'nodegrants_' . $type . '_' . 'author_view', 1);
+    $bundle->setThirdPartySetting('nodegrants', 'nodegrants_' . $type . '_' . 'author_update', 1);
+    $bundle->setThirdPartySetting('nodegrants', 'nodegrants_' . $type . '_' . 'author_delete', 1);
     $bundle->save();
   }
 }
@@ -60,9 +60,9 @@ function nodeaccess_install() {
 /**
  * Implements hook_schema().
  */
-function nodeaccess_schema() {
+function nodegrants_schema() {
   $schema = [];
-  $schema['nodeaccess_nodes_enabled'] = [
+  $schema['nodegrants_nodes_enabled'] = [
     'fields' => [
       'nid' => [
         'type' => 'int',
@@ -74,7 +74,7 @@ function nodeaccess_schema() {
     'primary key' => ['nid'],
   ];
 
-  $schema['nodeaccess'] = [
+  $schema['nodegrants'] = [
     'fields' => [
       'nid' => [
         'type' => 'int',
@@ -122,9 +122,9 @@ function nodeaccess_schema() {
 }
 
 /**
- * Create our nodeaccess_nodes_enabled table.
+ * Create our nodegrants_nodes_enabled table.
  */
-function nodeaccess_update_8200() {
+function nodegrants_update_8200() {
   $spec = [];
   $spec = [
     'fields' => [
@@ -138,16 +138,16 @@ function nodeaccess_update_8200() {
     'primary key' => ['nid'],
   ];
   $schema = Database::getConnection()->schema();
-  $schema->createTable('nodeaccess_nodes_enabled', $spec);
+  $schema->createTable('nodegrants_nodes_enabled', $spec);
 }
 
 /**
- * Convert old Nodeaccess data.
+ * Convert old Nodegrants data.
  */
-function nodeaccess_update_8201() {
+function nodegrants_update_8201() {
   $db = \Drupal::database();
 
-  $config = \Drupal::configFactory()->getEditable('nodeaccess.settings');
+  $config = \Drupal::configFactory()->getEditable('nodegrants.settings');
   $allowed_types = $config->get('allowed_types');
   $role_map = $config->get('role_map');
 
@@ -160,21 +160,21 @@ function nodeaccess_update_8201() {
         $update = $role[$machine_name]['grant_update'];
         $delete = $role[$machine_name]['grant_delete'];;
 
-        $type->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $node_type . '_' . $machine_name . '_view', $view);
-        $type->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $node_type . '_' . $machine_name . '_update', $update);
-        $type->setThirdPartySetting('nodeaccess', 'nodeaccess_' . $node_type . '_' . $machine_name . '_delete', $delete);
-        $type->setThirdPartySetting('nodeaccess', 'nodeaccess_grant_tab_' . $node_type, $enabled);
+        $type->setThirdPartySetting('nodegrants', 'nodegrants_' . $node_type . '_' . $machine_name . '_view', $view);
+        $type->setThirdPartySetting('nodegrants', 'nodegrants_' . $node_type . '_' . $machine_name . '_update', $update);
+        $type->setThirdPartySetting('nodegrants', 'nodegrants_' . $node_type . '_' . $machine_name . '_delete', $delete);
+        $type->setThirdPartySetting('nodegrants', 'nodegrants_grant_tab_' . $node_type, $enabled);
       }
     }
   }
 
-  $entries = $db->select('nodeaccess', 'n')
+  $entries = $db->select('nodegrants', 'n')
     ->fields('n', ['nid'])
     ->distinct()
     ->execute()
     ->fetchAll();
   foreach ($entries as $entry) {
-    $db->insert('nodeaccess_nodes_enabled')
+    $db->insert('nodegrants_nodes_enabled')
       ->fields([
         'nid' => $entry->nid,
       ])

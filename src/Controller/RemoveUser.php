@@ -1,6 +1,6 @@
 <?php
 
-namespace Drupal\nodeaccess\Controller;
+namespace Drupal\nodegrants\Controller;
 
 use Drupal\Core\Controller\ControllerBase;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -17,16 +17,16 @@ class RemoveUser extends ControllerBase {
   public function handleRemoval($nid, $uid) {
     $db = \Drupal::database();
 
-    $delete = $query = $db->delete('nodeaccess')
+    $db->delete('nodegrants')
       ->condition('nid', $nid)
       ->condition('gid', $uid)
-      ->condition('realm', 'nodeaccess_uid')
+      ->condition('realm', 'nodegrants_uid')
       ->execute();
 
-    $delete = $query = $db->delete('node_access')
+    $db->delete('node_access')
       ->condition('nid', $nid)
       ->condition('gid', $uid)
-      ->condition('realm', 'nodeaccess_uid')
+      ->condition('realm', 'nodegrants_uid')
       ->execute();
 
     \Drupal::messenger()->addMessage(t('The selected user was removed. No other data was saved.'));

@@ -1,5 +1,5 @@
-nodeaccess.configuration:
-  title: 'Nodeaccess'
+nodegrants.configuration:
+  title: 'Nodegrants'
   description: 'Configure user role access to content by node type, and allow granting per-node access to roles and users.'
   parent: system.admin_structure
-  route_name: nodeaccess.administration
+  route_name: nodegrants.administration

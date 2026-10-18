@@ -1,6 +1,6 @@
 <?php
 
-namespace Drupal\nodeaccess\Controller;
+namespace Drupal\nodegrants\Controller;
 
 use Drupal\Core\Controller\ControllerBase;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -39,10 +39,10 @@ class UserAutocompleteController extends ControllerBase {
     $nid = $request->query->getInt('nid');
     $node = $nid ? $this->entityTypeManager()->getStorage('node')->load($nid) : NULL;
     if ($node && $node->access('update')) {
-      $granted = $db->select('nodeaccess', 'n')
+      $granted = $db->select('nodegrants', 'n')
         ->fields('n', ['gid'])
         ->condition('n.nid', $nid)
-        ->condition('n.realm', 'nodeaccess_uid');
+        ->condition('n.realm', 'nodegrants_uid');
       $query->condition('ufd.uid', $granted, 'NOT IN');
     }
 

@@ -1,13 +1,14 @@
 {
-  "name": "mbagnall/nodeaccess",
+  "name": "drupal/nodegrants",
   "description": "Provides access control to Drupal nodes based on role. Access can also be controlled by specific user.",
   "type": "drupal-module",
   "license": "GPL-2.0-or-later",
   "require": {
-    "php": "^8.3",
+    "php": "^8.4",
     "drupal/core": "^11 || ^12"
   },
   "conflict": {
-    "drupal/nodeaccess": "*"
+    "drupal/nodeaccess": "*",
+    "drush/drush": "<13.7"
   }
 }

@@ -1,0 +1,21 @@
+nodegrants.administration:
+  path: '/admin/structure/nodegrants'
+  defaults:
+    _form: '\Drupal\nodegrants\Form\ConfigForm'
+    _title: 'Nodegrants'
+  requirements:
+    _permission: 'administer nodegrants'
+nodegrants.autocomplete.users:
+  path: '/admin/structure/nodegrants/autocomplete/users'
+  defaults:
+    _controller: '\Drupal\nodegrants\Controller\UserAutocompleteController::handleAutocomplete'
+    _format: json
+  requirements:
+    _permission: 'grant node permissions'
+nodegrants.remove.user:
+  path: '/admin/structure/nodegrants/remove/user/{nid}/{uid}'
+  defaults:
+    _controller: '\Drupal\nodegrants\Controller\RemoveUser::handleRemoval'
+  requirements:
+    _permission: 'administer nodegrants'
+    _csrf_token: 'TRUE'

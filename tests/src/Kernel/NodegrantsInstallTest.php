@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Drupal\Tests\nodeaccess\Kernel;
+namespace Drupal\Tests\nodegrants\Kernel;
 
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\node\Entity\NodeType;
@@ -13,11 +13,11 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
- * Tests nodeaccess installation and schema setup.
+ * Tests nodegrants installation and schema setup.
  */
-#[Group('nodeaccess')]
+#[Group('nodegrants')]
 #[RunTestsInSeparateProcesses]
-class NodeaccessInstallTest extends KernelTestBase {
+class NodegrantsInstallTest extends KernelTestBase {
 
   use UserCreationTrait {
     createUser as drupalCreateUser;
@@ -33,7 +33,7 @@ class NodeaccessInstallTest extends KernelTestBase {
    */
   protected static $modules = [
     'node',
-    'nodeaccess',
+    'nodegrants',
     'datetime',
     'user',
     'system',
@@ -48,7 +48,7 @@ class NodeaccessInstallTest extends KernelTestBase {
   protected function setUp(): void {
     parent::setUp();
     $this->installSchema('node', 'node_access');
-    $this->installSchema('nodeaccess', ['nodeaccess', 'nodeaccess_nodes_enabled']);
+    $this->installSchema('nodegrants', ['nodegrants', 'nodegrants_nodes_enabled']);
     $this->installEntitySchema('user');
     $this->installEntitySchema('node');
     $this->installConfig(['filter', 'node', 'user']);
@@ -57,12 +57,12 @@ class NodeaccessInstallTest extends KernelTestBase {
   }
 
   /**
-   * Tests that the nodeaccess schema tables are created.
+   * Tests that the nodegrants schema tables are created.
    */
   public function testSchemaTablesExist(): void {
     $schema = \Drupal::database()->schema();
-    $this->assertTrue($schema->tableExists('nodeaccess'), 'nodeaccess table exists.');
-    $this->assertTrue($schema->tableExists('nodeaccess_nodes_enabled'), 'nodeaccess_nodes_enabled table exists.');
+    $this->assertTrue($schema->tableExists('nodegrants'), 'nodegrants table exists.');
+    $this->assertTrue($schema->tableExists('nodegrants_nodes_enabled'), 'nodegrants_nodes_enabled table exists.');
   }
 
   /**
@@ -75,42 +75,42 @@ class NodeaccessInstallTest extends KernelTestBase {
     ]);
 
     // Run install.
-    \Drupal::moduleHandler()->loadInclude('nodeaccess', 'install');
-    nodeaccess_install();
+    \Drupal::moduleHandler()->loadInclude('nodegrants', 'install');
+    nodegrants_install();
 
     $type = NodeType::load('article');
 
     // Anonymous should have view access if it has 'access content' permission.
     $anonymous = Role::load('anonymous');
     $expected_view = (int) $anonymous->hasPermission('access content');
-    $actual = $type->getThirdPartySetting('nodeaccess', 'nodeaccess_article_anonymous_view', NULL);
+    $actual = $type->getThirdPartySetting('nodegrants', 'nodegrants_article_anonymous_view', NULL);
     $this->assertEquals($expected_view, $actual, 'Anonymous view default matches permission.');
 
     // Author defaults should all be 1.
-    $this->assertEquals(1, $type->getThirdPartySetting('nodeaccess', 'nodeaccess_article_author_view'));
-    $this->assertEquals(1, $type->getThirdPartySetting('nodeaccess', 'nodeaccess_article_author_update'));
-    $this->assertEquals(1, $type->getThirdPartySetting('nodeaccess', 'nodeaccess_article_author_delete'));
+    $this->assertEquals(1, $type->getThirdPartySetting('nodegrants', 'nodegrants_article_author_view'));
+    $this->assertEquals(1, $type->getThirdPartySetting('nodegrants', 'nodegrants_article_author_update'));
+    $this->assertEquals(1, $type->getThirdPartySetting('nodegrants', 'nodegrants_article_author_delete'));
   }
 
   /**
-   * Tests that the nodeaccess table has the correct columns.
+   * Tests that the nodegrants table has the correct columns.
    */
-  public function testNodeaccessTableSchema(): void {
+  public function testNodegrantsTableSchema(): void {
     $db = \Drupal::database();
 
     // Insert a row to verify all columns exist.
-    $db->insert('nodeaccess')
+    $db->insert('nodegrants')
       ->fields([
         'nid' => 999,
         'gid' => 1,
-        'realm' => 'nodeaccess_rid',
+        'realm' => 'nodegrants_rid',
         'grant_view' => 1,
         'grant_update' => 0,
         'grant_delete' => 0,
       ])
       ->execute();
 
-    $result = $db->select('nodeaccess', 'n')
+    $result = $db->select('nodegrants', 'n')
       ->fields('n')
       ->condition('nid', 999)
       ->execute()
@@ -118,23 +118,23 @@ class NodeaccessInstallTest extends KernelTestBase {
 
     $this->assertEquals(999, $result['nid']);
     $this->assertEquals(1, $result['gid']);
-    $this->assertEquals('nodeaccess_rid', $result['realm']);
+    $this->assertEquals('nodegrants_rid', $result['realm']);
     $this->assertEquals(1, $result['grant_view']);
     $this->assertEquals(0, $result['grant_update']);
     $this->assertEquals(0, $result['grant_delete']);
   }
 
   /**
-   * Tests the primary key constraint on nodeaccess table.
+   * Tests the primary key constraint on nodegrants table.
    */
-  public function testNodeaccessPrimaryKey(): void {
+  public function testNodegrantsPrimaryKey(): void {
     $db = \Drupal::database();
 
-    $db->insert('nodeaccess')
+    $db->insert('nodegrants')
       ->fields([
         'nid' => 100,
         'gid' => 1,
-        'realm' => 'nodeaccess_rid',
+        'realm' => 'nodegrants_rid',
         'grant_view' => 1,
         'grant_update' => 0,
         'grant_delete' => 0,
@@ -143,11 +143,11 @@ class NodeaccessInstallTest extends KernelTestBase {
 
     // Inserting a duplicate should fail.
     $this->expectException(\Exception::class);
-    $db->insert('nodeaccess')
+    $db->insert('nodegrants')
       ->fields([
         'nid' => 100,
         'gid' => 1,
-        'realm' => 'nodeaccess_rid',
+        'realm' => 'nodegrants_rid',
         'grant_view' => 0,
         'grant_update' => 1,
         'grant_delete' => 1,

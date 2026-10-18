@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Drupal\Tests\nodeaccess\Functional;
+namespace Drupal\Tests\nodegrants\Functional;
 
 use Drupal\node\Entity\NodeType;
 use Drupal\Tests\BrowserTestBase;
@@ -11,18 +11,18 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
- * Tests nodeaccess integration on node add/edit forms.
+ * Tests nodegrants integration on node add/edit forms.
  */
-#[Group('nodeaccess')]
+#[Group('nodegrants')]
 #[RunTestsInSeparateProcesses]
-class NodeaccessNodeFormTest extends BrowserTestBase {
+class NodegrantsNodeFormTest extends BrowserTestBase {
 
   /**
    * {@inheritdoc}
    */
   protected static $modules = [
     'node',
-    'nodeaccess',
+    'nodegrants',
   ];
 
   /**
@@ -50,7 +50,7 @@ class NodeaccessNodeFormTest extends BrowserTestBase {
     ]);
 
     $this->adminUser = $this->drupalCreateUser([
-      'administer nodeaccess',
+      'administer nodegrants',
       'administer content types',
       'administer nodes',
       'access content',
@@ -62,44 +62,45 @@ class NodeaccessNodeFormTest extends BrowserTestBase {
   }
 
   /**
-   * Tests that nodeaccess form does NOT appear when not enabled for type.
+   * Tests that nodegrants form does NOT appear when not enabled for type.
    */
-  public function testNodeFormWithoutNodeaccess(): void {
+  public function testNodeFormWithoutNodegrants(): void {
     $this->drupalLogin($this->adminUser);
     $this->drupalGet('/node/add/page');
     $this->assertSession()->statusCodeEquals(200);
 
-    // Nodeaccess section should not appear because it's not enabled.
-    $this->assertSession()->pageTextNotContains('Engage nodeaccess control for this node');
+    // Nodegrants section should not appear because it's not enabled.
+    $this->assertSession()->fieldNotExists('table[user][page_user]');
   }
 
   /**
-   * Tests that nodeaccess form appears when enabled for the content type.
+   * Tests that nodegrants form appears when enabled for the content type.
    */
-  public function testNodeFormWithNodeaccess(): void {
-    // Enable nodeaccess for the page content type.
+  public function testNodeFormWithNodegrants(): void {
+    // Enable nodegrants for the page content type.
     $type = NodeType::load('page');
-    $type->setThirdPartySetting('nodeaccess', 'nodeaccess_grant_tab_page', TRUE);
+    $type->setThirdPartySetting('nodegrants', 'nodegrants_grant_tab_page', TRUE);
     $type->save();
 
     $this->drupalLogin($this->adminUser);
     $this->drupalGet('/node/add/page');
     $this->assertSession()->statusCodeEquals(200);
 
-    // Nodeaccess section should appear.
-    $this->assertSession()->pageTextContains('Engage nodeaccess control for this node');
+    // Nodegrants section should appear, with no per-node on/off toggle.
+    $this->assertSession()->fieldExists('table[user][page_user]');
+    $this->assertSession()->fieldNotExists('nodegrants_enable');
   }
 
   /**
-   * Tests nodeaccess settings on node type edit form.
+   * Tests nodegrants settings on node type edit form.
    */
   public function testNodeTypeEditForm(): void {
     $this->drupalLogin($this->adminUser);
     $this->drupalGet('/admin/structure/types/manage/page');
     $this->assertSession()->statusCodeEquals(200);
 
-    // Nodeaccess settings should be present.
-    $this->assertSession()->pageTextContains('Nodeaccess');
+    // Nodegrants settings should be present.
+    $this->assertSession()->pageTextContains('Nodegrants');
     $this->assertSession()->pageTextContains('Show grant tab for this node type.');
   }
 
@@ -116,27 +117,33 @@ class NodeaccessNodeFormTest extends BrowserTestBase {
     // Verify it was saved.
     $type = NodeType::load('page');
     $this->assertTrue(
-      (bool) $type->getThirdPartySetting('nodeaccess', 'nodeaccess_grant_tab_page', FALSE),
+      (bool) $type->getThirdPartySetting('nodegrants', 'nodegrants_grant_tab_page', FALSE),
       'Grant tab was enabled for the content type.'
     );
 
-    // Now the node form should show the nodeaccess section.
+    // Changing the switch on an existing type flags a node access rebuild.
+    $this->assertTrue(
+      (bool) \Drupal::state()->get('node.node_access_needs_rebuild'),
+      'Turning nodegrants on for the type flagged a node access rebuild.'
+    );
+
+    // Now the node form should show the nodegrants section.
     $this->drupalGet('/node/add/page');
-    $this->assertSession()->pageTextContains('Engage nodeaccess control for this node');
+    $this->assertSession()->fieldExists('table[user][page_user]');
   }
 
   /**
    * Tests that role checkboxes appear based on allowed roles.
    */
   public function testRoleCheckboxesOnNodeForm(): void {
-    // Enable nodeaccess for page.
+    // Enable nodegrants for page.
     $type = NodeType::load('page');
-    $type->setThirdPartySetting('nodeaccess', 'nodeaccess_grant_tab_page', TRUE);
+    $type->setThirdPartySetting('nodegrants', 'nodegrants_grant_tab_page', TRUE);
     $type->save();
 
     // Give authenticated role the permission to appear in grants.
     $authenticated = Role::load('authenticated');
-    $authenticated->grantPermission('include in nodeaccess grants');
+    $authenticated->grantPermission('include in nodegrants grants');
     $authenticated->save();
 
     $this->drupalLogin($this->adminUser);
@@ -147,26 +154,25 @@ class NodeaccessNodeFormTest extends BrowserTestBase {
   }
 
   /**
-   * Tests creating a node with nodeaccess grants enabled.
+   * Tests creating a node with nodegrants grants enabled.
    */
   public function testCreateNodeWithGrants(): void {
-    // Enable nodeaccess for page.
+    // Enable nodegrants for page.
     $type = NodeType::load('page');
-    $type->setThirdPartySetting('nodeaccess', 'nodeaccess_grant_tab_page', TRUE);
+    $type->setThirdPartySetting('nodegrants', 'nodegrants_grant_tab_page', TRUE);
     $type->save();
 
     // Give authenticated role the permission.
     $authenticated = Role::load('authenticated');
-    $authenticated->grantPermission('include in nodeaccess grants');
+    $authenticated->grantPermission('include in nodegrants grants');
     $authenticated->save();
 
     $this->drupalLogin($this->adminUser);
     $this->drupalGet('/node/add/page');
 
-    // Fill in the node form with nodeaccess enabled.
+    // Saving through the pane always puts the node under nodegrants control.
     $edit = [
       'title[0][value]' => 'Test Node',
-      'nodeaccess_enable' => TRUE,
     ];
     $this->submitForm($edit, 'Save');
 
@@ -175,21 +181,21 @@ class NodeaccessNodeFormTest extends BrowserTestBase {
 
     // Verify grants were saved in the database.
     $db = \Drupal::database();
-    $nodes = $db->select('nodeaccess_nodes_enabled', 'ne')
+    $nodes = $db->select('nodegrants_nodes_enabled', 'ne')
       ->fields('ne')
       ->execute()
       ->fetchAll();
-    $this->assertNotEmpty($nodes, 'Node was recorded in nodeaccess_nodes_enabled.');
+    $this->assertNotEmpty($nodes, 'Node was recorded in nodegrants_nodes_enabled.');
   }
 
   /**
-   * Tests the node type add form includes nodeaccess settings.
+   * Tests the node type add form includes nodegrants settings.
    */
   public function testNodeTypeAddForm(): void {
     $this->drupalLogin($this->adminUser);
     $this->drupalGet('/admin/structure/types/add');
     $this->assertSession()->statusCodeEquals(200);
-    $this->assertSession()->pageTextContains('Nodeaccess');
+    $this->assertSession()->pageTextContains('Nodegrants');
   }
 
 }

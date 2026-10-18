@@ -1,0 +1,12 @@
+administer nodegrants:
+  title: Administer Nodegrants
+  description: Access the Nodegrants administration pages
+  restrict access: true
+grant node permissions:
+  title: Grant Node Permissions
+  description: Grant Node Permissions
+  restrict access: false
+include in nodegrants grants:
+  title: Include in Nodegrants grants
+  description: Determines if this role can be included in specific Nodegrants grants
+  restrict access: false

@@ -94,8 +94,3 @@ vendor/bin/phpunit web/modules/drupal/nodegrants/tests/
 Kernel tests cover grant records, access checks, role map management, and
 installation. Functional tests cover the admin configuration form and node form
 integration.
-
-## Links
-
-- [GitHub repository](https://github.com/ElusiveMind/nodeaccess) (pull requests)
-- [Issue queue](https://github.com/ElusiveMind/nodeaccess/issues) (bugs, feature requests)

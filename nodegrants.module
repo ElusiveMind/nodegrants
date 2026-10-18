@@ -28,7 +28,7 @@ function nodegrants_help($route_name, RouteMatchInterface $route_match) {
 
   <h2>INTRODUCTION</h2>
 
-  <p>This module is now fully Drupal 11 compatible and will be maintained to remain so.
+  <p>This module is now fully Drupal 12 compatible and will be maintained to remain so.
   Many interface and feature enhancements have been made as part of the code cleanup
   and the fixing of bugs. Please see the GitHub Wiki for this project to get a complete
   set of documentation on how to use this module as well as how to update form previous

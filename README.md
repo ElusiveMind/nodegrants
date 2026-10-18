@@ -12,8 +12,8 @@ edit page.
 
 ## Requirements
 
-- Drupal 11/12
-- PHP 8.3+
+- Drupal 11.4 and up
+- PHP 8.4+
 
 ## Installation
 
@@ -33,6 +33,11 @@ drush en nodegrants
 > Drupal.org version). You cannot have both installed at the same time.
 
 ## Configuration
+
+A step-by-step guide with screenshots is in [docs/USAGE.md](docs/USAGE.md),
+also available as a standalone web page in [docs/usage.html](docs/usage.html)
+and as a body fragment for a Drupal node in
+[docs/usage-node-body.html](docs/usage-node-body.html). The short version:
 
 1. **Enable per content type:** Go to **Administration > Structure > Content
    types**, edit a content type, and check "Show grant tab for this node type"

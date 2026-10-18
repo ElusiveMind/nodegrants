@@ -35,9 +35,7 @@ drush en nodegrants
 ## Configuration
 
 A step-by-step guide with screenshots is in [docs/USAGE.md](docs/USAGE.md),
-also available as a standalone web page in [docs/usage.html](docs/usage.html)
-and as a body fragment for a Drupal node in
-[docs/usage-node-body.html](docs/usage-node-body.html). The short version:
+also available as a standalone web page on [FlyingFlip.com](https://www.flyingflip.com/projects/nodegrants). Here is the Reader's Digest version:
 
 1. **Enable per content type:** Go to **Administration > Structure > Content
    types**, edit a content type, and check "Show grant tab for this node type"
